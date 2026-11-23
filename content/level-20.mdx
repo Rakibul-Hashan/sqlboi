@@ -1,0 +1,487 @@
+<Story title="ফাইনাল বস">
+২৫টা লেভেল আর দুটো মিনি বস পেরিয়ে তুমি এখানে। এবার আর কেউ টেবিল বানিয়ে দেবে না, প্রশ্ন সাজিয়ে দেবে না। একটা বাস্তব সমস্যা নাও, আর শূন্য থেকে একটা পূর্ণ Database বানাও: চাহিদা বোঝা থেকে নকশা, টেবিল, নিয়ম, Query, স্বয়ংক্রিয়তা, গতি আর নিরাপত্তা পর্যন্ত। এটাই সত্যিকারের ডেটাবেস ইঞ্জিনিয়ারের কাজ, আর ইউনির টার্ম প্রজেক্টও ঠিক এটাই চায়।
+</Story>
+
+<Mission>
+- নিজের পছন্দের একটা প্রজেক্ট শুরু থেকে শেষ পর্যন্ত বানানো
+- ১০ ধাপের চেকলিস্ট মেনে, প্রতিটা ধাপে আগের লেভেলগুলোর দক্ষতা কাজে লাগানো
+- একটা পূর্ণাঙ্গ নমুনা প্রজেক্ট (আলোকিত কোচিং সেন্টার) দেখে নিজেরটা মিলিয়ে নেওয়া
+</Mission>
+
+## প্রজেক্ট বাছাই
+
+নিচের যেকোনো একটা নাও, বা নিজের এলাকার একটা সত্যিকারের সমস্যা (সেটাই সবচেয়ে ভালো, কারণ তখন চাহিদা জিজ্ঞেস করার জন্য একজন সত্যিকারের মানুষ পাবে):
+
+| প্রজেক্ট | মূল Entity | কঠিন অংশ |
+| --- | --- | --- |
+| কোচিং সেন্টার | ছাত্র, কোর্স, শিক্ষক, ভর্তি, পেমেন্ট | সিট সীমা, বকেয়ার হিসাব |
+| অনলাইন দোকান | কাস্টমার, পণ্য, অর্ডার, অর্ডার আইটেম, ডেলিভারি | স্টক কমানো Transaction-এ, অর্ডারের সময়ের দাম |
+| হাসপাতাল | (লেভেল ১৪-এর বস) ডাক্তার, রোগী, অ্যাপয়েন্টমেন্ট, প্রেসক্রিপশন | একই সময়ে দুই রোগী না |
+| বাস টিকেট | রুট, বাস, ট্রিপ, সিট, বুকিং | একই সিট দুবার বিক্রি না (Lock) |
+| মেস/হোস্টেল | সদস্য, রুম, মাসিক বিল, বাজার খরচ | ভাগাভাগির হিসাব |
+
+## ১০ ধাপের চেকলিস্ট
+
+| ধাপ | কাজ | কোন লেভেল |
+| --- | --- | --- |
+| ১ | চাহিদা লেখো: কে ব্যবহার করবে, কী কী প্রশ্নের উত্তর চায়, কী কী নিয়ম কখনো ভাঙা যাবে না | ০ |
+| ২ | ER Diagram: Entity, Attribute, Relationship, Cardinality | ১৪ |
+| ৩ | টেবিলে Mapping আর Normalization (অন্তত 3NF), প্রতিটা FD যাচাই | ১৩, ১৫ |
+| ৪ | `CREATE TABLE`: ঠিক Data Type, `utf8mb4` | ১ |
+| ৫ | Constraint: PK, FK (সঠিক `ON DELETE`), `UNIQUE`, `NOT NULL`, `CHECK`, `DEFAULT` | ৯ |
+| ৬ | বাস্তবসম্মত নমুনা ডেটা, এমন সব কোণ সহ যেখানে বাগ লুকায় (`NULL`, শূন্য, সীমার মান, কিছু-নেই এমন Entity) | ২ |
+| ৭ | অন্তত ১০টা অর্থবহ Query: JOIN, GROUP BY, Subquery, LEFT JOIN-এর Anti Join | ৩–১২ |
+| ৮ | অন্তত একটা করে View, Procedure (Transaction সহ), Trigger | ১৭, ১৮ |
+| ৯ | Index: সবচেয়ে ব্যবহৃত Query-র `EXPLAIN` আগে আর পরে | ১৬ |
+| ১০ | User/Role, Backup স্ক্রিপ্ট, আর একটা পরীক্ষামূলক Restore | ১৯ |
+
+<Remember>
+**নকশায় সময় দাও, কোডে কম লাগবে।** একটা ভুল টেবিল ডিজাইন পরে ঠিক করা মানে সব Query, সব অ্যাপ কোড আবার লেখা। ধাপ ১–৩ শেষ না করে `CREATE TABLE` লিখবে না।
+</Remember>
+
+## নমুনা প্রজেক্ট: আলোকিত কোচিং সেন্টার
+
+নিজেরটা শেষ করার পরে, বা আটকে গেলে, প্রতিটা ধাপ খুলে মেলাও। পুরো স্ক্রিপ্ট: [coaching.sql](/sql/coaching.sql)।
+
+### ধাপ ১: চাহিদা
+
+<Solution title="চাহিদার তালিকা দেখো">
+**ব্যবহারকারী:** পরিচালক (সব রিপোর্ট), অফিস (ভর্তি আর পেমেন্ট নেওয়া), শিক্ষক (নিজের কোর্সের ছাত্র দেখা)।
+
+**প্রশ্ন যার উত্তর চাই:** কোন কোর্সে কত সিট বাকি; কার কত বকেয়া; মাসে কত আয়; কোন শিক্ষক কয়জনকে পড়ান; কে একাধিক কোর্সে; কে এখনো এক টাকাও দেয়নি।
+
+**কখনো ভাঙা যাবে না এমন নিয়ম:**
+1. কোর্সের সিট সীমার বেশি ভর্তি হবে না।
+2. একজন একই কোর্সে দুবার ভর্তি হবে না।
+3. কেউ বকেয়ার বেশি টাকা দিতে পারবে না।
+4. প্রতিটা ছাত্রের ফোন নম্বর অনন্য (অভিভাবকের সাথে যোগাযোগের জন্য)।
+5. একটা কোর্সে একাধিক শিক্ষক থাকতে পারেন, একজন শিক্ষক একাধিক কোর্স পড়াতে পারেন।
+</Solution>
+
+### ধাপ ২–৩: ER আর Normalization
+
+<Solution title="নকশা দেখো">
+- **Entity:** Teacher, Course, Student, Enrollment, Payment
+- Teacher **M:N** Course → Junction টেবিল `course_teachers`
+- Student **M:N** Course, কিন্তু সম্পর্কটার নিজস্ব তথ্য আছে (ভর্তির তারিখ) আর এর সাথে পেমেন্ট যুক্ত, তাই এটাকে নিজেই Entity বানিয়েছি: **Enrollment** (Student ১:N Enrollment, Course ১:N Enrollment)
+- Enrollment **১:N** Payment (কিস্তিতে টাকা দেওয়া যায়)
+- **Derived:** বকেয়া (`fee − মোট পরিশোধ`), ভর্তি সংখ্যা। এগুলো জমিয়ে রাখব না, View-এ হিসাব করব।
+
+**Normalization যাচাই:** প্রতিটা টেবিলের Non-key Attribute শুধু নিজের Key-এর ওপর নির্ভর করে। যেমন `payments`-এ কোর্সের ফি রাখিনি (ফি নির্ভর করে কোর্সের ওপর, পেমেন্টের ওপর না), ছাত্রের নামও না (সেটা `enrollment_id → student_id → name` Transitive)। সব টেবিল BCNF।
+
+কেন `enrollments`-এ আলাদা `id`, আর `(student_id, course_id)` শুধু `UNIQUE`? কারণ `payments` একটা ভর্তিকে দেখায়; একক `id` দেখানো সহজ, আর নিয়ম ২ `UNIQUE` দিয়েই প্রয়োগ হচ্ছে।
+</Solution>
+
+### ধাপ ৪–৫: টেবিল আর Constraint
+
+<Solution title="CREATE TABLE দেখো">
+```sql
+CREATE DATABASE coaching CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE coaching;
+
+CREATE TABLE teachers (
+  id    INT AUTO_INCREMENT PRIMARY KEY,
+  name  VARCHAR(100) NOT NULL,
+  phone VARCHAR(15) NOT NULL UNIQUE
+);
+
+CREATE TABLE courses (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  name      VARCHAR(100) NOT NULL UNIQUE,
+  fee       DECIMAL(10,2) NOT NULL,
+  capacity  TINYINT UNSIGNED NOT NULL,
+  starts_on DATE NOT NULL,
+  CONSTRAINT chk_course_fee CHECK (fee > 0),
+  CONSTRAINT chk_course_capacity CHECK (capacity BETWEEN 1 AND 100)
+);
+
+CREATE TABLE course_teachers (
+  course_id  INT NOT NULL,
+  teacher_id INT NOT NULL,
+  PRIMARY KEY (course_id, teacher_id),
+  FOREIGN KEY (course_id)  REFERENCES courses(id) ON DELETE CASCADE,
+  FOREIGN KEY (teacher_id) REFERENCES teachers(id)
+);
+
+CREATE TABLE students (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  name      VARCHAR(100) NOT NULL,
+  phone     VARCHAR(15) NOT NULL UNIQUE,
+  school    VARCHAR(150),
+  joined_on DATE NOT NULL
+);
+
+CREATE TABLE enrollments (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  student_id  INT NOT NULL,
+  course_id   INT NOT NULL,
+  enrolled_on DATE NOT NULL,
+  UNIQUE (student_id, course_id),
+  FOREIGN KEY (student_id) REFERENCES students(id),
+  FOREIGN KEY (course_id)  REFERENCES courses(id)
+);
+
+CREATE TABLE payments (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  enrollment_id INT NOT NULL,
+  amount        DECIMAL(10,2) NOT NULL,
+  method        ENUM('নগদ', 'bKash', 'Nagad', 'ব্যাংক') NOT NULL,
+  paid_on       DATE NOT NULL,
+  CONSTRAINT chk_payment_amount CHECK (amount > 0),
+  FOREIGN KEY (enrollment_id) REFERENCES enrollments(id)
+);
+```
+
+`ON DELETE`-এর সিদ্ধান্তগুলো: কোর্স মুছলে শুধু শিক্ষক-বরাদ্দ মুছবে (`CASCADE`), কিন্তু ভর্তি বা পেমেন্ট থাকলে কোর্স বা ছাত্র মোছাই যাবে না (ডিফল্ট `RESTRICT`), কারণ টাকার হিসাব কখনো হারানো চলবে না।
+</Solution>
+
+### ধাপ ৬: নমুনা ডেটা
+
+<Solution title="INSERT দেখো">
+```sql
+INSERT INTO teachers (name, phone) VALUES
+  ('জামিল স্যার', '01700000201'), ('ফারজানা ম্যাডাম', '01700000202'), ('তারেক স্যার', '01700000203');
+
+INSERT INTO courses (name, fee, capacity, starts_on) VALUES
+  ('SSC গণিত', 6000.00, 3, '2026-09-01'),
+  ('SSC পদার্থবিজ্ঞান', 5000.00, 4, '2026-09-01'),
+  ('ইংরেজি স্পোকেন', 4000.00, 5, '2026-10-01'),
+  ('প্রোগ্রামিং পরিচিতি', 8000.00, 2, '2026-11-01');
+
+INSERT INTO course_teachers VALUES (1, 1), (2, 1), (2, 3), (3, 2), (4, 3);
+
+INSERT INTO students (name, phone, school, joined_on) VALUES
+  ('রাফি', '01711000001', 'আইডিয়াল স্কুল', '2026-08-20'),
+  ('নুসরাত', '01811000002', 'ভিকারুননিসা নূন স্কুল', '2026-08-22'),
+  ('তানভীর', '01811000003', 'আইডিয়াল স্কুল', '2026-08-25'),
+  ('মীম', '01911000004', 'সিলেট সরকারি পাইলট', '2026-09-10'),
+  ('আরিফ', '01511000005', NULL, '2026-10-05');
+
+INSERT INTO enrollments (student_id, course_id, enrolled_on) VALUES
+  (1, 1, '2026-08-20'), (1, 2, '2026-08-20'),
+  (2, 1, '2026-08-22'), (2, 4, '2026-10-25'),
+  (3, 1, '2026-08-25'), (3, 3, '2026-09-28'),
+  (4, 2, '2026-09-10'),
+  (5, 3, '2026-10-05');
+
+INSERT INTO payments (enrollment_id, amount, method, paid_on) VALUES
+  (1, 3000.00, 'bKash', '2026-08-20'), (1, 3000.00, 'bKash', '2026-10-01'),
+  (2, 2500.00, 'নগদ', '2026-08-20'),
+  (3, 6000.00, 'ব্যাংক', '2026-08-22'),
+  (4, 4000.00, 'Nagad', '2026-10-25'),
+  (5, 2000.00, 'নগদ', '2026-08-25'),
+  (6, 4000.00, 'bKash', '2026-09-28'),
+  (7, 1000.00, 'bKash', '2026-09-10');
+```
+
+ইচ্ছে করে রাখা "কোণ": SSC গণিতের সিট পুরো ভরা (৩/৩); আরিফ এক টাকাও দেয়নি; রাফি গণিতের টাকা দুই কিস্তিতে দিয়েছে; আরিফের স্কুল `NULL`।
+</Solution>
+
+### ধাপ ৭: দশটা প্রশ্ন
+
+<Solution title="Query আর ফলাফল দেখো">
+প্রথমে বকেয়ার একটা View, কারণ এটা অনেক Query-তে লাগবে (ধাপ ৮-এর অংশ, কিন্তু আগে বানাচ্ছি):
+
+```sql
+CREATE VIEW enrollment_dues AS
+SELECT e.id AS enrollment_id, s.id AS student_id, s.name AS student, c.name AS course,
+       c.fee, IFNULL(SUM(p.amount), 0) AS paid,
+       c.fee - IFNULL(SUM(p.amount), 0) AS due
+FROM enrollments e
+JOIN students s ON s.id = e.student_id
+JOIN courses c  ON c.id = e.course_id
+LEFT JOIN payments p ON p.enrollment_id = e.id
+GROUP BY e.id, s.id, s.name, c.name, c.fee;
+```
+
+**১. কোন কোর্সে কত সিট বাকি**
+
+```sql
+SELECT c.name, c.capacity, COUNT(e.id) AS enrolled, c.capacity - COUNT(e.id) AS seats_left
+FROM courses c
+LEFT JOIN enrollments e ON e.course_id = c.id
+GROUP BY c.id, c.name, c.capacity
+ORDER BY seats_left;
+```
+
+| name | capacity | enrolled | seats_left |
+| --- | --- | --- | --- |
+| SSC গণিত | 3 | 3 | 0 |
+| প্রোগ্রামিং পরিচিতি | 2 | 1 | 1 |
+| SSC পদার্থবিজ্ঞান | 4 | 2 | 2 |
+| ইংরেজি স্পোকেন | 5 | 2 | 3 |
+
+**২. কার মোট কত বকেয়া**
+
+```sql
+SELECT student, SUM(due) AS total_due
+FROM enrollment_dues
+GROUP BY student_id, student
+HAVING SUM(due) > 0
+ORDER BY total_due DESC, student_id;
+```
+
+| student | total_due |
+| --- | --- |
+| নুসরাত | 4000.00 |
+| তানভীর | 4000.00 |
+| মীম | 4000.00 |
+| আরিফ | 4000.00 |
+| রাফি | 2500.00 |
+
+**৩. মাসভিত্তিক আয়**
+
+```sql
+SELECT DATE_FORMAT(paid_on, '%Y-%m') AS month, SUM(amount) AS income, COUNT(*) AS payments
+FROM payments
+GROUP BY month
+ORDER BY month;
+```
+
+| month | income | payments |
+| --- | --- | --- |
+| 2026-08 | 13500.00 | 4 |
+| 2026-09 | 5000.00 | 2 |
+| 2026-10 | 7000.00 | 2 |
+
+**৪. প্রতিটা শিক্ষকের কোর্স আর মোট ছাত্র**
+
+```sql
+SELECT t.name AS teacher,
+       GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS courses,
+       COUNT(DISTINCT e.student_id) AS students
+FROM teachers t
+JOIN course_teachers ct ON ct.teacher_id = t.id
+JOIN courses c          ON c.id = ct.course_id
+LEFT JOIN enrollments e ON e.course_id = c.id
+GROUP BY t.id, t.name
+ORDER BY t.id;
+```
+
+| teacher | courses | students |
+| --- | --- | --- |
+| জামিল স্যার | SSC গণিত, SSC পদার্থবিজ্ঞান | 4 |
+| ফারজানা ম্যাডাম | ইংরেজি স্পোকেন | 2 |
+| তারেক স্যার | SSC পদার্থবিজ্ঞান, প্রোগ্রামিং পরিচিতি | 3 |
+
+দুই জায়গায় `DISTINCT` না দিলে JOIN-এর কারণে কোর্সের নাম বারবার আসত আর রাফি (দুই কোর্সেই জামিল স্যারের ছাত্র) দুবার গোনা হতো।
+
+**৫. যারা একাধিক কোর্সে**
+
+```sql
+SELECT s.name, COUNT(*) AS courses
+FROM students s
+JOIN enrollments e ON e.student_id = s.id
+GROUP BY s.id, s.name
+HAVING COUNT(*) > 1;
+```
+
+রাফি, নুসরাত, তানভীর (প্রত্যেকে ২টা)।
+
+**৬. পেমেন্ট পদ্ধতির ভাগ**
+
+```sql
+SELECT method, SUM(amount) AS total,
+       ROUND(SUM(amount) * 100 / (SELECT SUM(amount) FROM payments), 1) AS pct
+FROM payments
+GROUP BY method
+ORDER BY total DESC;
+```
+
+| method | total | pct |
+| --- | --- | --- |
+| bKash | 11000.00 | 43.1 |
+| ব্যাংক | 6000.00 | 23.5 |
+| নগদ | 4500.00 | 17.6 |
+| Nagad | 4000.00 | 15.7 |
+
+**৭. যে এক টাকাও দেয়নি**
+
+```sql
+SELECT s.name
+FROM students s
+WHERE NOT EXISTS (
+  SELECT 1 FROM enrollments e
+  JOIN payments p ON p.enrollment_id = e.id
+  WHERE e.student_id = s.id
+);
+```
+
+আরিফ।
+
+**৮. সবচেয়ে বেশি আদায় হয়েছে কোন কোর্সে**
+
+```sql
+SELECT course, SUM(paid) AS collected
+FROM enrollment_dues
+GROUP BY course
+ORDER BY collected DESC
+LIMIT 1;
+```
+
+SSC গণিত, 14000.00। (সমান আদায়ে একাধিক কোর্স থাকলে দেখাতে চাইলে লেভেল ১২-এর `HAVING ... = (SELECT MAX ...)` কৌশল।)
+
+**৯. গড় বকেয়ার চেয়ে বেশি বকেয়া**
+
+```sql
+SELECT student, course, due
+FROM enrollment_dues
+WHERE due > (SELECT AVG(due) FROM enrollment_dues WHERE due > 0)
+ORDER BY due DESC, student_id;
+```
+
+বকেয়া আছে এমন ভর্তিগুলোর গড় 3700; নুসরাত, তানভীর, মীম, আরিফ (প্রত্যেকে 4000)।
+
+**১০. কোন স্কুল থেকে কতজন**
+
+```sql
+SELECT school, COUNT(*) AS n
+FROM students
+WHERE school IS NOT NULL
+GROUP BY school
+ORDER BY n DESC, school;
+```
+
+আইডিয়াল স্কুল ২, বাকিরা ১ করে। আরিফের `NULL` স্কুল ইচ্ছে করে বাদ।
+</Solution>
+
+### ধাপ ৮: স্বয়ংক্রিয়তা
+
+<Solution title="Procedure আর Trigger দেখো">
+**নিয়ম ১ (সিট সীমা):** ভর্তি হবে শুধু এই Procedure দিয়ে। কোর্সের Row `FOR UPDATE` দিয়ে Lock করায় দুজন একসাথে শেষ সিটটা নিতে পারবে না (লেভেল ১৮)।
+
+```sql
+DELIMITER //
+CREATE PROCEDURE enroll(IN p_student INT, IN p_course INT)
+BEGIN
+  DECLARE v_capacity INT;
+  DECLARE v_taken INT;
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  START TRANSACTION;
+    SELECT capacity INTO v_capacity FROM courses WHERE id = p_course FOR UPDATE;
+    IF v_capacity IS NULL THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'এই কোর্স নেই';
+    END IF;
+
+    SELECT COUNT(*) INTO v_taken FROM enrollments WHERE course_id = p_course;
+    IF v_taken >= v_capacity THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'কোর্সে আর সিট খালি নেই';
+    END IF;
+
+    INSERT INTO enrollments (student_id, course_id, enrolled_on)
+    VALUES (p_student, p_course, CURDATE());
+  COMMIT;
+END //
+DELIMITER ;
+
+CALL enroll(4, 1);   -- ERROR 1644: কোর্সে আর সিট খালি নেই
+CALL enroll(5, 4);   -- সফল: প্রোগ্রামিংয়ের শেষ সিট আরিফের
+CALL enroll(4, 4);   -- ERROR 1644: কোর্সে আর সিট খালি নেই
+```
+
+**নিয়ম ৩ (বকেয়ার বেশি না):** Trigger, যাতে অফিস বা অন্য কোনো অ্যাপ যেভাবেই টাকা নিক, নিয়মটা ভাঙা না যায়।
+
+```sql
+DELIMITER //
+CREATE TRIGGER trg_payments_no_overpay
+BEFORE INSERT ON payments
+FOR EACH ROW
+BEGIN
+  DECLARE v_due DECIMAL(10,2);
+  SELECT due INTO v_due FROM enrollment_dues WHERE enrollment_id = NEW.enrollment_id;
+  IF NEW.amount > v_due THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'পরিশোধ বকেয়ার চেয়ে বেশি হতে পারে না';
+  END IF;
+END //
+DELIMITER ;
+
+-- মীমের পদার্থবিজ্ঞানে বকেয়া 4000
+INSERT INTO payments (enrollment_id, amount, method, paid_on) VALUES (7, 5000, 'bKash', '2026-11-16');
+-- ERROR 1644: পরিশোধ বকেয়ার চেয়ে বেশি হতে পারে না
+INSERT INTO payments (enrollment_id, amount, method, paid_on) VALUES (7, 4000, 'bKash', '2026-11-16');
+-- সফল, বকেয়া এখন 0.00
+```
+
+নিয়ম ২ আর ৪ আগে থেকেই `UNIQUE` দিয়ে প্রয়োগ হচ্ছে; সবকিছুর জন্য Trigger লাগে না।
+</Solution>
+
+### ধাপ ৯: গতি
+
+<Solution title="Index-এর সিদ্ধান্ত দেখো">
+- Foreign Key Column (`enrollments.student_id`, `course_id`, `payments.enrollment_id`)-এ InnoDB নিজেই Index বানিয়েছে। `UNIQUE (student_id, course_id)` নিজেই একটা Composite Index, যেটা `student_id` দিয়ে খোঁজায়ও কাজে লাগে (Leftmost Prefix)।
+- মাসিক আয়ের রিপোর্ট তারিখের পরিসর দিয়ে খোঁজে, তাই:
+
+```sql
+CREATE INDEX idx_payments_paid_on ON payments (paid_on);
+
+EXPLAIN SELECT SUM(amount) FROM payments
+WHERE paid_on >= '2026-10-01' AND paid_on < '2026-11-01';
+```
+
+এই ছোট ডেটায় MySQL হয়তো Index ছাড়াই পুরো টেবিল পড়বে (লেভেল ১৬: অল্প Row-এ সেটাই সস্তা)। আসল পরীক্ষার জন্য লেভেল ১৬-এর মতো লাখখানেক কৃত্রিম পেমেন্ট ঢুকিয়ে `EXPLAIN ANALYZE` আগে-পরে মাপো। আর খেয়াল করো, রিপোর্টে `DATE_FORMAT(paid_on, ...)` `GROUP BY`-তে চলে, `WHERE`-এ না; তাই Index নষ্ট হয় না।
+</Solution>
+
+### ধাপ ১০: নিরাপত্তা আর Backup
+
+<Solution title="User আর Backup দেখো">
+```sql
+-- অফিস: ভর্তি Procedure চালাবে, পেমেন্ট নেবে, সব দেখবে
+CREATE ROLE 'coaching_office';
+GRANT SELECT ON coaching.* TO 'coaching_office';
+GRANT INSERT ON coaching.payments TO 'coaching_office';
+GRANT INSERT ON coaching.students TO 'coaching_office';
+GRANT EXECUTE ON PROCEDURE coaching.enroll TO 'coaching_office';
+
+-- শিক্ষক: শুধু ছাত্রদের নাম আর কোর্স, ফোন বা টাকার হিসাব না
+CREATE VIEW coaching.teacher_roster AS
+SELECT c.name AS course, s.name AS student, e.enrolled_on
+FROM enrollments e
+JOIN students s ON s.id = e.student_id
+JOIN courses c  ON c.id = e.course_id;
+
+CREATE ROLE 'coaching_teacher';
+GRANT SELECT ON coaching.teacher_roster TO 'coaching_teacher';
+```
+
+অফিসকে `enrollments`-এ সরাসরি `INSERT`-এর অনুমতি দিইনি, শুধু `enroll` চালানোর অনুমতি। তাই সিট সীমার নিয়ম পাশ কাটিয়ে কেউ ভর্তি করতে পারবে না। (Procedure ডিফল্টে তার বানানো মানুষের (DEFINER) অনুমতিতে চলে, তাই অফিসের নিজের `INSERT` অনুমতি লাগে না।)
+
+রাতের Backup (টার্মিনালে, প্রতিদিন চালানোর জন্য Windows Task Scheduler বা Linux `cron`):
+
+```bash
+mysqldump -u backup -p --single-transaction --routines --triggers \
+  --default-character-set=utf8mb4 coaching > coaching_2026-11-16.sql
+```
+
+তারপর অন্য একটা খালি Database-এ Restore করে `SELECT COUNT(*) FROM payments` মিলিয়ে দেখা, আর `SHOW PROCEDURE STATUS WHERE Db = 'coaching_test'` দিয়ে Procedure ফিরেছে কি না যাচাই করা। লেভেল ১৯-এর শিক্ষা: যাচাই না করা Backup একটা আশা মাত্র।
+</Solution>
+
+<Boss id="final" title="তোমার নিজের প্রজেক্ট">
+ওপরের তালিকা থেকে (বা নিজের) একটা প্রজেক্ট নাও আর ১০টা ধাপ শেষ করো। জমা দেওয়ার মতো করে গুছিয়ে রাখো:
+
+1. একটা `README`: চাহিদা, নিয়মের তালিকা, ER Diagram-এর ছবি (কাগজে এঁকে ছবি তুললেও চলবে, বা [draw.io](https://www.drawio.com)/MySQL Workbench)
+2. `schema.sql`: সব `CREATE` আর Constraint
+3. `seed.sql`: নমুনা ডেটা, কোণসহ
+4. `queries.sql`: ১০টা Query, প্রতিটার ওপরে এক লাইনের Comment যে এটা কোন প্রশ্নের উত্তর
+5. `automation.sql`: View, Procedure, Trigger
+6. `security.sql`: User/Role, আর Backup কমান্ড
+
+**নিজেকে যাচাইয়ের প্রশ্ন:** প্রতিটা "কখনো ভাঙা যাবে না" নিয়মের জন্য, এমন একটা `INSERT` বা `UPDATE` লেখো যেটা নিয়মটা ভাঙার চেষ্টা করে, আর দেখো Database সেটা আটকায় কি না। প্রতিটা আটকানো মানে তোমার Database সত্যিই নিজেকে রক্ষা করতে পারে।
+
+এটা শেষ করলে তুমি আর শিক্ষার্থী না, একজন ডেটাবেস ডিজাইনার। 👑
+</Boss>
+
+<Summary slug="level-20" />
+
+<Checkpoint questions={[
+  { q: "প্রজেক্টে CREATE TABLE লেখার আগে কোনটা শেষ করা উচিত?", options: ["Index", "চাহিদা, ER Diagram আর Normalization", "Backup", "Trigger"], answer: 1, why: "নকশার ভুল পরে ঠিক করা সবচেয়ে ব্যয়বহুল।" },
+  { q: "নমুনা প্রজেক্টে 'বকেয়া' কেন টেবিলে জমানো হয়নি?", options: ["জায়গা বাঁচাতে", "এটা Derived; পেমেন্ট এলেই বদলায়, তাই View-এ হিসাব করা নিরাপদ", "MySQL-এ DECIMAL রাখা যায় না", "ভুলে গেছি"], answer: 1, why: "জমানো মান মূল ডেটার সাথে গরমিল হতে পারে।" },
+  { q: "সিট সীমা কেন CHECK দিয়ে না করে Procedure + FOR UPDATE দিয়ে?", options: ["CHECK ধীর", "CHECK অন্য Row গুনতে পারে না, আর একসাথে দুজনের ভর্তি ঠেকাতে Lock লাগে", "CHECK বাংলা বোঝে না", "কোনো কারণ নেই"], answer: 1, why: "সীমা নির্ভর করে অন্য Row-এর সংখ্যার ওপর, আর সমকালীন অনুরোধে Race Condition হয়।" },
+  { q: "অফিসকে enrollments-এ সরাসরি INSERT অনুমতি না দিয়ে শুধু EXECUTE কেন?", options: ["গতির জন্য", "যাতে সিট সীমার যাচাই পাশ কাটানো না যায়", "INSERT অনুমতি দেওয়া যায় না", "Backup-এর জন্য"], answer: 1, why: "নিয়মের একমাত্র দরজা Procedure, তাই নিয়ম সবসময় প্রয়োগ হয়।" },
+  { q: "শিক্ষক আর কোর্সের সম্পর্ক কোনটা, আর কীভাবে রাখা হলো?", options: ["১:১, এক টেবিলে", "১:N, courses-এ teacher_id", "M:N, course_teachers Junction টেবিলে", "সম্পর্ক নেই"], answer: 2, why: "একজন শিক্ষক অনেক কোর্স, একটা কোর্সে অনেক শিক্ষক।" }
+]} />

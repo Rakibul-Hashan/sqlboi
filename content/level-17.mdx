@@ -1,0 +1,478 @@
+<Mission>
+- **View**: একটা Query-কে নাম দিয়ে "ভার্চুয়াল টেবিল" বানানো
+- **Stored Function**: নিজের বানানো Function, `SELECT`-এর ভেতরে ব্যবহারযোগ্য
+- **Stored Procedure**: সার্ভারে জমিয়ে রাখা কয়েক ধাপের কাজ, `IN`/`OUT` প্যারামিটার আর `SIGNAL` দিয়ে নিজের error
+- **Trigger**: টেবিলে কিছু ঘটলেই নিজে থেকে চলে এমন কোড
+- `DELIMITER` কেন লাগে
+</Mission>
+
+<Note title="শুরুর আগে">
+জোন ২-এর খাতা ([school-zone2.sql](/sql/school-zone2.sql)) আবার চালিয়ে পরিষ্কার অবস্থায় শুরু করো।
+</Note>
+
+## View: নাম দেওয়া Query
+
+লেভেল ১০ থেকে আমরা বারবার একই তিন-টেবিলের JOIN লিখছি। একবার লিখে নাম দিয়ে রাখি:
+
+```sql
+CREATE VIEW report_card AS
+SELECT s.id AS student_id, s.name, s.class, sub.name AS subject, m.score
+FROM marks m
+JOIN students s   ON s.id = m.student_id
+JOIN subjects sub ON sub.id = m.subject_id;
+```
+
+এখন এটা টেবিলের মতোই ব্যবহার করা যায়:
+
+```sql
+SELECT name, subject, score FROM report_card WHERE name = 'রাফি';
+```
+
+| name | subject | score |
+| --- | --- | --- |
+| রাফি | গণিত | 85 |
+| রাফি | বাংলা | 78 |
+| রাফি | বিজ্ঞান | 90 |
+
+View কোনো ডেটা **জমিয়ে রাখে না**। প্রতিবার ব্যবহারের সময় MySQL ভেতরের Query-টা নতুন করে চালায়, তাই View সবসময় সর্বশেষ ডেটা দেখায়।
+
+View কেন কাজের:
+
+- **সরলতা**: জটিল JOIN একবার লেখো, সবাই সহজ নামে ব্যবহার করুক।
+- **নিরাপত্তা**: অফিস স্টাফকে পুরো `students` টেবিল না দিয়ে শুধু নাম আর ক্লাসের একটা View দেখার অনুমতি দাও; ফোন নম্বর লুকানো থাকবে (লেভেল ১৯)।
+- **স্থিতিশীলতা**: টেবিলের গঠন বদলালে শুধু View-এর ভেতরের Query বদলাও, অ্যাপের কোড অক্ষত থাকে।
+
+লেভেল ১৫-এ বলেছিলাম, `total` জমিয়ে রাখি না। View-এ রাখলে জমাতেও হয় না, প্রতিবার হিসাবও লিখতে হয় না:
+
+```sql
+CREATE VIEW student_totals AS
+SELECT s.id, s.name, s.class,
+       COUNT(m.subject_id) AS exams,
+       IFNULL(SUM(m.score), 0) AS total
+FROM students s
+LEFT JOIN marks m ON m.student_id = s.id
+GROUP BY s.id, s.name, s.class;
+
+SELECT name, total FROM student_totals WHERE class = 10 ORDER BY total DESC;
+```
+
+| name | total |
+| --- | --- |
+| ইমরান | 235 |
+| জুবায়ের | 207 |
+| ফারিহা | 0 |
+
+### View দিয়ে কি ডেটা বদলানো যায়?
+
+কখনো কখনো। সরল View (একটা বা JOIN-করা টেবিল, কোনো `GROUP BY`, `DISTINCT`, Aggregate নেই) দিয়ে মূল টেবিলের একটা Column বদলানো যায়। কিন্তু `student_totals`-এ `SUM` আছে, তাই:
+
+```sql
+UPDATE student_totals SET total = 0 WHERE id = 1;
+-- ERROR 1288: The target table student_totals of the UPDATE is not updatable
+```
+
+যৌক্তিক: "মোট নম্বর ০ করো" মানে কোন বিষয়ের নম্বর কত কমাবে? MySQL জানে না। নিয়ম হিসেবে মনে রাখো: **View-কে পড়ার জন্য ভাবো**, লেখার জন্য মূল টেবিল।
+
+```sql
+SHOW FULL TABLES WHERE Table_type = 'VIEW';   -- কোন কোন View আছে
+```
+
+কোনো View মুছতে `DROP VIEW IF EXISTS view_name;`। এতে মূল টেবিলের ডেটার কিছুই হয় না। (এখন `student_totals` মুছো না, পরের অংশে লাগবে।)
+
+## DELIMITER: একটা ছোট্ট কৌশল
+
+Function, Procedure আর Trigger-এর ভেতরে একাধিক লাইন থাকে, প্রতিটার শেষে `;`। কিন্তু MySQL টার্মিনাল প্রথম `;` দেখেই ভাবে কমান্ড শেষ, আর অর্ধেকটা পাঠিয়ে দেয়! তাই সাময়িকভাবে কমান্ড শেষের চিহ্ন বদলে নিই:
+
+```sql
+DELIMITER //
+-- এখানে লম্বা কোড, ভেতরে যত খুশি ;
+-- শেষে //
+DELIMITER ;
+```
+
+phpMyAdmin-এর SQL ট্যাবে নিচের দিকে একটা **Delimiter** বক্স আছে; সেখানে `//` লিখে দিলে কোডের ভেতরে `DELIMITER` লাইন লাগে না। MySQL Workbench `DELIMITER` লাইন বোঝে।
+
+## Stored Function: নিজের Function
+
+বাংলাদেশের মাধ্যমিক পর্যায়ের নম্বরভিত্তিক গ্রেড স্কেল (৮০-১০০ A+, ৭০-৭৯ A, ৬০-৬৯ A-, ৫০-৫৯ B, ৪০-৪৯ C, ৩৩-৩৯ D, ৩৩-এর নিচে F; [সূত্র](https://en.wikipedia.org/wiki/Secondary_School_Certificate_(Bangladesh))) একটা Function-এ ভরি:
+
+```sql
+DELIMITER //
+CREATE FUNCTION grade_of(p_score INT)
+RETURNS VARCHAR(2)
+DETERMINISTIC
+BEGIN
+  RETURN CASE
+    WHEN p_score >= 80 THEN 'A+'
+    WHEN p_score >= 70 THEN 'A'
+    WHEN p_score >= 60 THEN 'A-'
+    WHEN p_score >= 50 THEN 'B'
+    WHEN p_score >= 40 THEN 'C'
+    WHEN p_score >= 33 THEN 'D'
+    ELSE 'F'
+  END;
+END //
+DELIMITER ;
+```
+
+```sql
+SELECT name, subject, score, grade_of(score) AS grade
+FROM report_card
+WHERE class = 9
+ORDER BY name, subject;
+```
+
+| name | subject | score | grade |
+| --- | --- | --- | --- |
+| আরিফ | গণিত | 55 | B |
+| আরিফ | বাংলা | 62 | A- |
+| আরিফ | বিজ্ঞান | 48 | C |
+| মীম | গণিত | 88 | A+ |
+| মীম | বাংলা | 80 | A+ |
+| মীম | বিজ্ঞান | 82 | A+ |
+| সাদিয়া | গণিত | 92 | A+ |
+| সাদিয়া | বাংলা | 88 | A+ |
+| সাদিয়া | বিজ্ঞান | 94 | A+ |
+
+- `RETURNS` বলে কী Type ফেরত দেবে।
+- `DETERMINISTIC` মানে একই ইনপুটে সবসময় একই আউটপুট। MySQL 8-এ Binary Logging ডিফল্টে চালু থাকে, আর তখন এই ঘোষণা (বা `NO SQL` / `READS SQL DATA`) না দিলে Function বানাতেই দেয় না: `ERROR 1418`।
+- প্যারামিটারের নামে `p_` উপসর্গ একটা রীতি, যাতে Column-এর নামের সাথে গুলিয়ে না যায়।
+
+## Stored Procedure: জমিয়ে রাখা কাজ
+
+Function একটা মান দেয়; Procedure **কাজ করে**: টেবিল বদলায়, একাধিক ফলাফল দেখায়, ডাকা হয় `CALL` দিয়ে।
+
+### IN প্যারামিটার আর ফলাফল
+
+```sql
+DELIMITER //
+CREATE PROCEDURE class_report(IN p_class TINYINT)
+BEGIN
+  SELECT name, exams, total
+  FROM student_totals
+  WHERE class = p_class
+  ORDER BY total DESC;
+END //
+DELIMITER ;
+
+CALL class_report(8);
+```
+
+| name | exams | total |
+| --- | --- | --- |
+| নুসরাত | 3 | 285 |
+| রাফি | 3 | 253 |
+| তানভীর | 3 | 213 |
+| লামিয়া | 2 | 192 |
+
+### যাচাই আর নিজের Error: SIGNAL
+
+শিক্ষকরা নম্বর দেবেন এই Procedure দিয়ে, সরাসরি `INSERT` না করে:
+
+```sql
+DELIMITER //
+CREATE PROCEDURE add_mark(IN p_student INT, IN p_subject INT, IN p_score INT)
+BEGIN
+  IF p_score < 0 OR p_score > 100 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'নম্বর ০ থেকে ১০০-এর মধ্যে হতে হবে';
+  END IF;
+
+  INSERT INTO marks (student_id, subject_id, score)
+  VALUES (p_student, p_subject, p_score)
+  ON DUPLICATE KEY UPDATE score = VALUES(score);
+END //
+DELIMITER ;
+```
+
+```sql
+CALL add_mark(8, 1, 88);    -- ফারিহার গণিতের নম্বর এলো
+CALL add_mark(8, 1, 91);    -- পুনর্মূল্যায়নে বাড়ল: নতুন লাইন না, আগেরটাই হালনাগাদ
+CALL add_mark(1, 1, 150);
+```
+
+<ErrorBox title="ERROR 1644 (45000)">
+নম্বর ০ থেকে ১০০-এর মধ্যে হতে হবে
+</ErrorBox>
+
+- `SIGNAL SQLSTATE '45000'` হলো "ব্যবহারকারীর নিজের error"; নিজের ভাষায় বার্তা দেওয়া যায়।
+- `ON DUPLICATE KEY UPDATE`: Primary Key আগে থেকে থাকলে নতুন লাইন না ঢুকিয়ে আগেরটা বদলাও। একে বলে **Upsert**। (MySQL 8.0.20 থেকে এখানে `VALUES()` লেখাটা deprecated, মানে ভবিষ্যতে সরানো হতে পারে; নতুন রূপ `VALUES (...) AS new ON DUPLICATE KEY UPDATE score = new.score`। কিন্তু MariaDB নতুন রূপ বোঝে না, তাই এখানে পুরোনোটাই রাখলাম।)
+
+### OUT প্যারামিটার
+
+```sql
+DELIMITER //
+CREATE PROCEDURE count_failed(IN p_subject INT, OUT p_count INT)
+BEGIN
+  SELECT COUNT(*) INTO p_count
+  FROM marks
+  WHERE subject_id = p_subject AND score < 60;
+END //
+DELIMITER ;
+
+CALL count_failed(1, @n);
+SELECT @n AS failed_in_math;     -- 1 (আরিফ)
+```
+
+`@n` একটা **Session Variable**: এই সংযোগ যতক্ষণ খোলা, ততক্ষণ মানটা থাকে।
+
+| | Function | Procedure |
+| --- | --- | --- |
+| ডাকা হয় | `SELECT`-এর ভেতরে | `CALL` দিয়ে |
+| ফেরত দেয় | ঠিক একটা মান (`RETURN`) | শূন্য বা একাধিক ফলাফল, `OUT` প্যারামিটার |
+| টেবিল বদলাতে পারে? | সাধারণত করা উচিত না | হ্যাঁ, এটাই মূল কাজ |
+| Transaction (লেভেল ১৮) | ভেতরে চালানো যায় না | চালানো যায় |
+
+## Trigger: পাহারাদার যে নিজে থেকেই জেগে ওঠে
+
+Trigger কেউ ডাকে না। টেবিলে `INSERT`, `UPDATE` বা `DELETE` হলেই, তার আগে (`BEFORE`) বা পরে (`AFTER`), প্রতিটা Row-এর জন্য নিজে থেকে চলে।
+
+### নম্বর বদলের হিসাব রাখা (Audit Log)
+
+পরীক্ষার নম্বর কে কখন বদলাল, তার একটা অপরিবর্তনীয় খাতা চাই:
+
+```sql
+CREATE TABLE marks_log (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  subject_id INT NOT NULL,
+  old_score  TINYINT UNSIGNED,
+  new_score  TINYINT UNSIGNED,
+  changed_by VARCHAR(100) NOT NULL,
+  changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+DELIMITER //
+CREATE TRIGGER trg_marks_audit
+AFTER UPDATE ON marks
+FOR EACH ROW
+BEGIN
+  IF OLD.score <> NEW.score THEN
+    INSERT INTO marks_log (student_id, subject_id, old_score, new_score, changed_by)
+    VALUES (OLD.student_id, OLD.subject_id, OLD.score, NEW.score, CURRENT_USER());
+  END IF;
+END //
+DELIMITER ;
+```
+
+```sql
+UPDATE marks SET score = 60 WHERE student_id = 5 AND subject_id = 3;
+SELECT student_id, subject_id, old_score, new_score, changed_by FROM marks_log;
+```
+
+| student_id | subject_id | old_score | new_score | changed_by |
+| --- | --- | --- | --- | --- |
+| 5 | 3 | 48 | 60 | root@localhost |
+
+`OLD` মানে বদলানোর আগের Row, `NEW` মানে পরের। `INSERT` Trigger-এ শুধু `NEW` থাকে, `DELETE`-এ শুধু `OLD`। কেউ phpMyAdmin থেকে সরাসরি বদলালেও Trigger ধরে ফেলবে, কারণ এটা অ্যাপে না, Database-এ বসানো।
+
+### ঢোকার আগে ডেটা পরিষ্কার করা
+
+`BEFORE` Trigger-এ `NEW`-এর মান বদলে দেওয়া যায়:
+
+```sql
+DELIMITER //
+CREATE TRIGGER trg_students_clean
+BEFORE INSERT ON students
+FOR EACH ROW
+BEGIN
+  SET NEW.name = TRIM(NEW.name);
+  IF NEW.phone = '' THEN
+    SET NEW.phone = NULL;     -- ফাঁকা লেখা নয়, "জানা নেই"
+  END IF;
+END //
+DELIMITER ;
+
+INSERT INTO students (name, roll, class, phone) VALUES ('   তাসনিম  ', 11, 8, '');
+SELECT CONCAT('[', name, ']') AS name, phone FROM students WHERE roll = 11;
+```
+
+| name | phone |
+| --- | --- |
+| [তাসনিম] | NULL |
+
+ফাঁকা `''` ফোনগুলোকে `NULL` না বানালে দ্বিতীয় ফোনহীন ছাত্র ঢোকাতে গেলেই `UNIQUE`-এ আটকাত, কারণ `''` আর `''` সমান (কিন্তু `NULL` আর `NULL` না)!
+
+```sql
+SHOW TRIGGERS;
+DROP TRIGGER IF EXISTS trg_students_clean;
+```
+
+<Remember>
+**Trigger অদৃশ্য।** কেউ একটা সাধারণ `UPDATE` চালাল, আর পেছনে তিনটা টেবিলে লেখা হলো; পরে কেউ বুঝতেই পারবে না কেন। তাই Trigger রাখো ছোট আর সরল, শুধু এমন নিয়মের জন্য যা **কোনো অবস্থাতেই** ভাঙা যাবে না (Audit, সংখ্যার সামঞ্জস্য)। ব্যবসার জটিল যুক্তি অ্যাপের কোড বা Procedure-এ রাখাই ভালো।
+</Remember>
+
+<BugMonster title="জাদুর হাতিয়ারের বিপদ">
+
+**১. `DELIMITER` ভুলে যাওয়া।** `You have an error in your SQL syntax ... near '' at line 3`। ভেতরের প্রথম `;`-এ কমান্ড কেটে গেছে।
+
+**২. `ERROR 1418 ... DETERMINISTIC, NO SQL, or READS SQL DATA`।** MySQL 8-এ Function-এ এই ঘোষণার একটা দিতেই হয়। মিথ্যা ঘোষণা দিও না: `NOW()` ব্যবহার করা Function `DETERMINISTIC` না।
+
+**৩. Trigger-এর ভেতরে একই টেবিলে লেখা।** `marks`-এর Trigger থেকে `UPDATE marks` চালালে `ERROR 1442: Can't update table 'marks' in stored function/trigger`। একই Row বদলাতে চাইলে `BEFORE` Trigger-এ `SET NEW.col = ...`।
+
+**৪. প্যারামিটারের নাম Column-এর নামের মতো।** `IN score INT` রেখে `WHERE score < 60` লিখলে MySQL প্যারামিটার ধরে নেবে, Column না। `p_` উপসর্গ দাও।
+
+**৫. View-এর ভেতরে `SELECT *`।** View বানানোর মুহূর্তে MySQL Column-এর তালিকা স্থির করে ফেলে; পরে টেবিলে নতুন Column যোগ হলে View তা দেখবে না। Column-এর নাম স্পষ্ট লেখো।
+
+</BugMonster>
+
+<Quest id="1" title="শিক্ষকের View">
+একটা `teacher_load` View বানাও: প্রতিটা শিক্ষক, তাঁর বিষয়ের নাম (না থাকলে "নেই"), আর কয়জন ছাত্রের খাতা দেখেছেন।
+
+<Solution>
+```sql
+CREATE VIEW teacher_load AS
+SELECT t.name AS teacher, IFNULL(sub.name, 'নেই') AS subject, COUNT(m.student_id) AS scripts
+FROM teachers t
+LEFT JOIN subjects sub ON sub.teacher_id = t.id
+LEFT JOIN marks m      ON m.subject_id = sub.id
+GROUP BY t.id, t.name, sub.id, sub.name;
+
+SELECT * FROM teacher_load;
+```
+</Solution>
+</Quest>
+
+<Quest id="2" title="গ্রেড পয়েন্টের Function">
+`grade_point(p_score)` বানাও, যা স্কেল অনুযায়ী ৫.০০, ৪.০০, ৩.৫০, ৩.০০, ২.০০, ১.০০ বা ০.০০ ফেরত দেবে। তারপর প্রতিটা ছাত্রের গড় গ্রেড পয়েন্ট বের করো।
+
+<Solution>
+```sql
+DELIMITER //
+CREATE FUNCTION grade_point(p_score INT)
+RETURNS DECIMAL(3,2)
+DETERMINISTIC
+BEGIN
+  RETURN CASE
+    WHEN p_score >= 80 THEN 5.00
+    WHEN p_score >= 70 THEN 4.00
+    WHEN p_score >= 60 THEN 3.50
+    WHEN p_score >= 50 THEN 3.00
+    WHEN p_score >= 40 THEN 2.00
+    WHEN p_score >= 33 THEN 1.00
+    ELSE 0.00
+  END;
+END //
+DELIMITER ;
+
+SELECT name, ROUND(AVG(grade_point(score)), 2) AS avg_gp
+FROM report_card
+GROUP BY student_id, name
+ORDER BY avg_gp DESC;
+```
+
+(আসল SSC-তে কোনো বিষয়ে F থাকলে মোট GPA শূন্য হয়, আর চতুর্থ বিষয়ের আলাদা নিয়ম আছে; এখানে সরল গড় নিয়েছি।)
+</Solution>
+</Quest>
+
+<Quest id="3" title="মুছে ফেলার আগে আটকাও">
+একটা Trigger বানাও যাতে কেউ `marks_log` থেকে কোনো লাইন মুছতে না পারে।
+
+<Solution>
+```sql
+DELIMITER //
+CREATE TRIGGER trg_marks_log_no_delete
+BEFORE DELETE ON marks_log
+FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Audit log মোছা যাবে না';
+END //
+DELIMITER ;
+```
+
+`BEFORE` Trigger-এ `SIGNAL` দিলে মূল কাজটাই বাতিল হয়ে যায়। তবে যার `DROP TRIGGER` বা `TRUNCATE`-এর অনুমতি আছে, সে এটা পেরিয়ে যেতে পারে; আসল সুরক্ষা আসে Privilege থেকে (লেভেল ১৯)।
+</Solution>
+</Quest>
+
+<Boss title="লাইব্রেরির স্বয়ংক্রিয় পাহারা">
+মিনি বস ২-এর `library` Database-এ (আবার চালিয়ে নাও: [library.sql](/sql/library.sql)) দুটো জিনিস বানাও:
+
+1. একটা Trigger, যেটা তাকে কপি না থাকলে নতুন ধার (`INSERT INTO loans`) আটকে দেবে, বাংলায় বার্তা দিয়ে।
+2. একটা Procedure `return_book(p_loan_id)`, যেটা আজকের তারিখে বই ফেরত নেবে, আর দেরি হলে দিনে ৫ টাকা হিসেবে জরিমানা ফলাফল হিসেবে দেখাবে। ইতিমধ্যে ফেরত দেওয়া বই আবার ফেরত নিতে চাইলে error।
+
+<Solution title="ইঙ্গিত ১">
+Trigger: `BEFORE INSERT ON loans`। ভেতরে মোট কপি আর এখন বাইরে থাকা কপি গুনে (`returned_on IS NULL`) তুলনা করো, আর আটকাতে `SIGNAL SQLSTATE '45000'`।
+</Solution>
+
+<Solution title="ইঙ্গিত ২">
+Procedure: আগে ধারটা খুঁজে `returned_on` দেখো; ইতিমধ্যে ফেরত হলে `SIGNAL`। না হলে আজকের তারিখ বসাও, আর জরিমানা = `GREATEST(DATEDIFF(CURDATE(), due_on), 0) * 5`। দুটোই `DELIMITER` বদলে লিখতে হবে।
+</Solution>
+
+<Solution>
+**১. কপি যাচাইয়ের Trigger**
+
+```sql
+USE library;
+
+DELIMITER //
+CREATE TRIGGER trg_loans_check_copies
+BEFORE INSERT ON loans
+FOR EACH ROW
+BEGIN
+  DECLARE v_copies INT;
+  DECLARE v_out INT;
+
+  SELECT copies INTO v_copies FROM books WHERE id = NEW.book_id;
+  SELECT COUNT(*) INTO v_out FROM loans
+  WHERE book_id = NEW.book_id AND returned_on IS NULL;
+
+  IF v_out >= v_copies THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'এই বইয়ের কোনো কপি এখন তাকে নেই';
+  END IF;
+END //
+DELIMITER ;
+
+-- গীতাঞ্জলির ২ কপিই বাইরে, তাই:
+INSERT INTO loans (book_id, member_id, borrowed_on, due_on) VALUES (2, 3, '2026-11-16', '2026-11-30');
+-- ERROR 1644 (45000): এই বইয়ের কোনো কপি এখন তাকে নেই
+```
+
+`DECLARE` দিয়ে Trigger বা Procedure-এর ভেতরে স্থানীয় Variable বানানো যায়; এগুলো `BEGIN`-এর ঠিক পরে, অন্য সব কাজের আগে লিখতে হয়। (লেভেল ৯-এর ক্লাব-সীমার সমস্যাটাও ঠিক এভাবেই সমাধান হয়, যা `CHECK` দিয়ে সম্ভব ছিল না।)
+
+**২. ফেরতের Procedure**
+
+```sql
+USE library;
+
+DELIMITER //
+CREATE PROCEDURE return_book(IN p_loan_id INT)
+BEGIN
+  DECLARE v_due DATE;
+  DECLARE v_returned DATE;
+
+  SELECT due_on, returned_on INTO v_due, v_returned
+  FROM loans WHERE id = p_loan_id;
+
+  IF v_due IS NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'এই নম্বরের কোনো ধার নেই';
+  END IF;
+  IF v_returned IS NOT NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'বইটা আগেই ফেরত দেওয়া হয়েছে';
+  END IF;
+
+  UPDATE loans SET returned_on = CURDATE() WHERE id = p_loan_id;
+
+  SELECT p_loan_id AS loan_id,
+         GREATEST(DATEDIFF(CURDATE(), v_due), 0) AS days_late,
+         GREATEST(DATEDIFF(CURDATE(), v_due), 0) * 5 AS fine;
+END //
+DELIMITER ;
+
+CALL return_book(2);   -- রাফির গীতাঞ্জলি
+CALL return_book(2);   -- ERROR: বইটা আগেই ফেরত দেওয়া হয়েছে
+```
+
+`GREATEST(..., 0)` আগে ফেরত দিলে ঋণাত্মক জরিমানা ঠেকায়। জরিমানার অঙ্ক তোমার আজকের তারিখের ওপর নির্ভর করবে।
+
+একটা প্রশ্ন রেখে যাই: দুইজন লাইব্রেরিয়ান **ঠিক একই মুহূর্তে** গীতাঞ্জলির শেষ কপিটা দুজনকে দিলে, দুটো Trigger-ই কি "একটা কপি আছে" দেখে ফেলতে পারে? হ্যাঁ, পারে। এর সমাধান পরের লেভেলে: Transaction আর Lock।
+</Solution>
+</Boss>
+
+<Summary slug="level-17" />
+
+<Checkpoint questions={[
+  { q: "View কি নিজের ভেতরে ডেটা জমিয়ে রাখে?", options: ["হ্যাঁ, একটা কপি রাখে", "না, প্রতিবার ভেতরের Query নতুন করে চলে", "শুধু প্রথমবার", "শুধু Index-এ"], answer: 1, why: "View একটা সংরক্ষিত Query, তাই সবসময় সর্বশেষ ডেটা দেখায়।" },
+  { q: "Function বানানোর সময় DELIMITER কেন বদলাই?", options: ["গতির জন্য", "ভেতরের ; দেখে টার্মিনাল যেন কমান্ড শেষ না ভাবে", "নিরাপত্তার জন্য", "বাংলার জন্য"], answer: 1, why: "শরীরের ভেতরে অনেক ; থাকে; পুরো কোড একসাথে পাঠাতে শেষের চিহ্ন সাময়িকভাবে বদলাতে হয়।" },
+  { q: "UPDATE Trigger-এ পুরোনো মান কোথায় পাওয়া যায়?", options: ["NEW", "OLD", "BEFORE", "PREV"], answer: 1, why: "OLD = বদলের আগের Row, NEW = পরের Row।" },
+  { q: "SIGNAL SQLSTATE '45000' কী করে?", options: ["Transaction শুরু করে", "নিজের বানানো error ছোড়ে আর কাজ থামিয়ে দেয়", "Log লেখে", "Index বানায়"], answer: 1, why: "'45000' হলো ব্যবহারকারী-নির্ধারিত error-এর সাধারণ কোড।" },
+  { q: "Function আর Procedure-এর মূল পার্থক্য?", options: ["কোনো পার্থক্য নেই", "Function একটা মান ফেরত দেয় আর SELECT-এ ব্যবহার হয়; Procedure CALL দিয়ে চলে আর কাজ করে", "Procedure দ্রুত", "Function শুধু সংখ্যার জন্য"], answer: 1, why: "Function = মান, Procedure = কাজ।" }
+]} />

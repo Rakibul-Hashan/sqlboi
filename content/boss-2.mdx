@@ -1,0 +1,344 @@
+<Story title="মিনি বস: স্কুল লাইব্রেরির রহস্য">
+লাইব্রেরিয়ান আপা হতাশ। "গীতাঞ্জলি কার কাছে? কয় কপি বাকি? কে দুই সপ্তাহ ধরে বই ফেরত দিচ্ছে না?" খাতায় সব লেখা আছে, কিন্তু খুঁজে বের করতে পুরো দুপুর চলে যায়। হেডস্যার তোমাকে ডেকে বললেন: "জোন ২-এ তুমি যা শিখেছ, সব দিয়ে আপাকে একটা আসল লাইব্রেরি সিস্টেম বানিয়ে দাও।"
+</Story>
+
+<Mission>
+- Constraint দিয়ে নিরাপদ তিন-টেবিলের ডিজাইন (লেভেল ৯)
+- Date Function আর `CASE` দিয়ে জরিমানার হিসাব (লেভেল ৬)
+- `COUNT`, `GROUP BY`, `HAVING` দিয়ে রিপোর্ট (লেভেল ৭–৮)
+- `INNER`, `LEFT JOIN` আর Anti Join (লেভেল ১০–১১)
+- Subquery, `EXISTS`, `NOT IN`-এর ফাঁদ (লেভেল ১২)
+</Mission>
+
+<Note title="নিয়ম">
+ধরে নাও আজকের তারিখ **২০২৬-১১-১৬**। (নিজের কম্পিউটারে `CURDATE()` ব্যবহার করলে উত্তর আলাদা আসবে, তাই এখানে তারিখটা সরাসরি লেখা।) পুরো স্ক্রিপ্ট: [library.sql](/sql/library.sql)।
+</Note>
+
+## রাউন্ড ১: ডিজাইন
+
+তিনটা টেবিল: বই, সদস্য, আর ধার (কে কোন বই কবে নিল, কবে ফেরত দিল)।
+
+```sql
+CREATE DATABASE library CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE library;
+
+CREATE TABLE books (
+  id       INT AUTO_INCREMENT PRIMARY KEY,
+  title    VARCHAR(200) NOT NULL,
+  author   VARCHAR(100) NOT NULL,
+  category VARCHAR(50)  NOT NULL,
+  copies   TINYINT UNSIGNED NOT NULL DEFAULT 1 CHECK (copies >= 1)
+);
+
+CREATE TABLE members (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  name      VARCHAR(100) NOT NULL,
+  type      ENUM('ছাত্র', 'শিক্ষক') NOT NULL,
+  phone     VARCHAR(15) UNIQUE,
+  joined_on DATE NOT NULL
+);
+
+CREATE TABLE loans (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  book_id     INT  NOT NULL,
+  member_id   INT  NOT NULL,
+  borrowed_on DATE NOT NULL,
+  due_on      DATE NOT NULL,
+  returned_on DATE NULL,            -- NULL মানে এখনো ফেরত দেয়নি
+  CHECK (due_on > borrowed_on),
+  CHECK (returned_on IS NULL OR returned_on >= borrowed_on),
+  FOREIGN KEY (book_id)   REFERENCES books(id),
+  FOREIGN KEY (member_id) REFERENCES members(id)
+);
+```
+
+নতুন জিনিস **`ENUM`**: নির্দিষ্ট কয়েকটা মানের মধ্যে একটা। `type`-এ 'ছাত্র' বা 'শিক্ষক' ছাড়া কিছু বসবে না।
+
+`loans`-এ কেন `(book_id, member_id)` Primary Key না? কারণ একই সদস্য একই বই একাধিকবার ধার নিতে পারে (রাফি পথের পাঁচালী সেপ্টেম্বরেও নিয়েছে, পরেও নিতে পারে)। প্রতিটা ধার একটা আলাদা ঘটনা, তাই আলাদা `id`।
+
+```sql
+INSERT INTO books (title, author, category, copies) VALUES
+  ('পথের পাঁচালী', 'বিভূতিভূষণ বন্দ্যোপাধ্যায়', 'উপন্যাস', 3),
+  ('গীতাঞ্জলি', 'রবীন্দ্রনাথ ঠাকুর', 'কবিতা', 2),
+  ('অগ্নিবীণা', 'কাজী নজরুল ইসলাম', 'কবিতা', 2),
+  ('দেবদাস', 'শরৎচন্দ্র চট্টোপাধ্যায়', 'উপন্যাস', 1),
+  ('গোরা', 'রবীন্দ্রনাথ ঠাকুর', 'উপন্যাস', 1),
+  ('শেষের কবিতা', 'রবীন্দ্রনাথ ঠাকুর', 'উপন্যাস', 2),
+  ('বিষের বাঁশী', 'কাজী নজরুল ইসলাম', 'কবিতা', 1),
+  ('আরণ্যক', 'বিভূতিভূষণ বন্দ্যোপাধ্যায়', 'উপন্যাস', 1);
+
+INSERT INTO members (name, type, phone, joined_on) VALUES
+  ('রাফি', 'ছাত্র', '01711000001', '2025-01-10'),
+  ('নুসরাত', 'ছাত্র', '01811000002', '2025-01-12'),
+  ('মীম', 'ছাত্র', '01911000004', '2025-03-01'),
+  ('হাসান স্যার', 'শিক্ষক', '01700000101', '2024-08-20'),
+  ('রুমানা ম্যাডাম', 'শিক্ষক', '01700000102', '2024-09-05'),
+  ('তানভীর', 'ছাত্র', NULL, '2026-10-01');
+
+INSERT INTO loans (book_id, member_id, borrowed_on, due_on, returned_on) VALUES
+  (1, 1, '2026-09-01', '2026-09-15', '2026-09-14'),
+  (2, 1, '2026-10-20', '2026-11-03', NULL),
+  (4, 2, '2026-10-01', '2026-10-15', '2026-10-20'),
+  (1, 2, '2026-11-01', '2026-11-15', NULL),
+  (3, 3, '2026-11-05', '2026-11-19', NULL),
+  (5, 4, '2026-08-10', '2026-09-10', '2026-09-01'),
+  (6, 4, '2026-10-25', '2026-11-25', NULL),
+  (1, 5, '2026-09-20', '2026-10-20', '2026-10-18'),
+  (2, 5, '2026-11-02', '2026-12-02', NULL),
+  (6, 1, '2026-07-01', '2026-07-15', '2026-07-20'),
+  (4, 3, '2026-10-22', '2026-11-05', '2026-11-04');
+```
+
+<Quest id="1" title="পাহারাদার পরীক্ষা">
+এমন একটা ধার ঢোকানোর চেষ্টা করো যেখানে ফেরতের তারিখ ধার নেওয়ার আগে। কোন Constraint আটকাল? তারপর 'অতিথি' টাইপের একজন সদস্য ঢোকানোর চেষ্টা করো।
+
+<Solution>
+```sql
+INSERT INTO loans (book_id, member_id, borrowed_on, due_on, returned_on)
+VALUES (1, 1, '2026-11-10', '2026-11-20', '2026-11-01');
+-- ERROR 3819: Check constraint 'loans_chk_2' is violated.
+
+INSERT INTO members (name, type, joined_on) VALUES ('অতিথি', 'অতিথি', '2026-11-16');
+-- ERROR 1265: Data truncated for column 'type' at row 1
+```
+
+`ENUM`-এর বাইরের মান দিলে MySQL (strict mode-এ) error দেয়।
+</Solution>
+</Quest>
+
+## রাউন্ড ২: আপার রোজকার প্রশ্ন
+
+<Quest id="2" title="এখন কোন বই কার কাছে?">
+যেসব বই এখনো ফেরত আসেনি: বইয়ের নাম, সদস্যের নাম, ফেরতের শেষ তারিখ, শেষ তারিখ অনুযায়ী সাজিয়ে।
+
+<Solution>
+```sql
+SELECT b.title, m.name, l.due_on
+FROM loans l
+JOIN books b   ON b.id = l.book_id
+JOIN members m ON m.id = l.member_id
+WHERE l.returned_on IS NULL
+ORDER BY l.due_on;
+```
+
+| title | name | due_on |
+| --- | --- | --- |
+| গীতাঞ্জলি | রাফি | 2026-11-03 |
+| পথের পাঁচালী | নুসরাত | 2026-11-15 |
+| অগ্নিবীণা | মীম | 2026-11-19 |
+| শেষের কবিতা | হাসান স্যার | 2026-11-25 |
+| গীতাঞ্জলি | রুমানা ম্যাডাম | 2026-12-02 |
+</Solution>
+</Quest>
+
+<Quest id="3" title="জরিমানার খাতা">
+যাদের বইয়ের মেয়াদ পেরিয়ে গেছে অথচ ফেরত দেয়নি: কত দিন দেরি, আর দিনে ৫ টাকা হিসেবে জরিমানা।
+
+<Solution>
+```sql
+SELECT m.name, b.title, l.due_on,
+       DATEDIFF('2026-11-16', l.due_on) AS days_late,
+       DATEDIFF('2026-11-16', l.due_on) * 5 AS fine
+FROM loans l
+JOIN books b   ON b.id = l.book_id
+JOIN members m ON m.id = l.member_id
+WHERE l.returned_on IS NULL AND l.due_on < '2026-11-16'
+ORDER BY days_late DESC;
+```
+
+| name | title | due_on | days_late | fine |
+| --- | --- | --- | --- | --- |
+| রাফি | গীতাঞ্জলি | 2026-11-03 | 13 | 65 |
+| নুসরাত | পথের পাঁচালী | 2026-11-15 | 1 | 5 |
+</Solution>
+</Quest>
+
+<Quest id="4" title="তাকে কয় কপি আছে?">
+প্রতিটা বইয়ের মোট কপি আর এই মুহূর্তে কয় কপি তাকে আছে। কোনো বই বাদ যাবে না।
+
+<Solution>
+```sql
+SELECT b.title, b.copies,
+       b.copies - COUNT(l.id) AS available
+FROM books b
+LEFT JOIN loans l ON l.book_id = b.id AND l.returned_on IS NULL
+GROUP BY b.id, b.title, b.copies
+ORDER BY b.id;
+```
+
+| title | copies | available |
+| --- | --- | --- |
+| পথের পাঁচালী | 3 | 2 |
+| গীতাঞ্জলি | 2 | 0 |
+| অগ্নিবীণা | 2 | 1 |
+| দেবদাস | 1 | 1 |
+| গোরা | 1 | 1 |
+| শেষের কবিতা | 2 | 1 |
+| বিষের বাঁশী | 1 | 1 |
+| আরণ্যক | 1 | 1 |
+
+লেভেল ১১-এর শিক্ষা কাজে লাগল: `returned_on IS NULL` শর্তটা `ON`-এ, `WHERE`-এ না। `WHERE`-এ দিলে যে বই এখন কারো কাছে নেই, সেগুলো তালিকা থেকেই উধাও হয়ে যেত।
+</Solution>
+</Quest>
+
+<Quest id="5" title="জনপ্রিয়তার তালিকা">
+প্রতিটা বই এ পর্যন্ত মোট কতবার ধার হয়েছে, একবারও না হলে ০।
+
+<Solution>
+```sql
+SELECT b.title, COUNT(l.id) AS times
+FROM books b
+LEFT JOIN loans l ON l.book_id = b.id
+GROUP BY b.id, b.title
+ORDER BY times DESC, b.title;
+```
+
+| title | times |
+| --- | --- |
+| পথের পাঁচালী | 3 |
+| গীতাঞ্জলি | 2 |
+| দেবদাস | 2 |
+| শেষের কবিতা | 2 |
+| অগ্নিবীণা | 1 |
+| গোরা | 1 |
+| আরণ্যক | 0 |
+| বিষের বাঁশী | 0 |
+</Solution>
+</Quest>
+
+<Quest id="6" title="যে কখনো আসেনি">
+কোন সদস্য এখনো একবারও বই নেয়নি? `NOT EXISTS` দিয়ে।
+
+<Solution>
+```sql
+SELECT m.name
+FROM members m
+WHERE NOT EXISTS (SELECT 1 FROM loans l WHERE l.member_id = m.id);
+```
+
+তানভীর, নতুন সদস্য। `loans.member_id` `NOT NULL`, তাই এখানে `NOT IN`-ও নিরাপদে কাজ করত। কিন্তু অভ্যাসটা `NOT EXISTS`-এর রাখো।
+</Solution>
+</Quest>
+
+## রাউন্ড ৩: হেডস্যারের রিপোর্ট
+
+<Quest id="7" title="কে দেরি করে ফেরত দেয়?">
+যারা অন্তত একবার মেয়াদ পেরিয়ে বই ফেরত দিয়েছে, আর কতবার।
+
+<Solution>
+```sql
+SELECT m.name, COUNT(*) AS late_returns
+FROM loans l
+JOIN members m ON m.id = l.member_id
+WHERE l.returned_on > l.due_on
+GROUP BY m.id, m.name
+ORDER BY m.name;
+```
+
+নুসরাত ১ (দেবদাস), রাফি ১ (শেষের কবিতা)। যারা এখনো ফেরত দেয়নি, তাদের `returned_on` `NULL`, তাই তারা এখানে আসেনি; তাদের খোঁজ রাউন্ড ২-এর জরিমানার খাতায়।
+</Solution>
+</Quest>
+
+<Quest id="8" title="ছাত্র বনাম শিক্ষক">
+ছাত্র আর শিক্ষকরা আলাদাভাবে মোট কয়বার বই নিয়েছেন, আর ফেরত দেওয়া বইগুলো গড়ে কত দিন রেখেছিলেন।
+
+<Solution>
+```sql
+SELECT m.type, COUNT(l.id) AS loans,
+       ROUND(AVG(DATEDIFF(l.returned_on, l.borrowed_on)), 1) AS avg_days
+FROM members m
+JOIN loans l ON l.member_id = m.id
+GROUP BY m.type;
+```
+
+| type | loans | avg_days |
+| --- | --- | --- |
+| ছাত্র | 7 | 16.0 |
+| শিক্ষক | 4 | 25.0 |
+
+গড়ে শুধু ফেরত দেওয়া বইগুলো গোনা হয়েছে, কারণ ফেরত না দিলে `DATEDIFF`-এর ফলাফল `NULL`, আর `AVG` `NULL` উপেক্ষা করে। লেভেল ৭-এর নিয়ম এখানে সুবিধা দিল।
+</Solution>
+</Quest>
+
+<Boss title="তিন মাথার দানব">
+হেডস্যারের শেষ তিনটা প্রশ্ন, প্রতিটা এক Query-তে:
+
+1. কোন লেখকের অন্তত ২টা বই লাইব্রেরিতে আছে, আর তাঁদের বইগুলো মোট কতবার ধার হয়েছে?
+2. সবচেয়ে বেশি বার বই নিয়েছে কে? সমান হলে সবাই আসবে।
+3. প্রতিটা সদস্যের জন্য একটা স্ট্যাটাস: "জরিমানা বাকি" (মেয়াদোত্তীর্ণ বই হাতে), "বই হাতে আছে", "পরিষ্কার" (কিছু হাতে নেই), বা "নতুন" (কখনো নেয়নি)।
+
+<Solution title="ইঙ্গিত ১">
+প্রশ্ন ১: `books` থেকে `LEFT JOIN loans`, লেখক ধরে দল। বই গুনতে `COUNT(DISTINCT b.id)`, কারণ একটা বই অনেকবার ধার হলে তার অনেক Row।
+</Solution>
+
+<Solution title="ইঙ্গিত ২">
+প্রশ্ন ২: "সমান হলে সবাই", তাই `LIMIT 1` না; সর্বোচ্চ সংখ্যাটা Subquery-তে বের করে `HAVING COUNT(*) = (...)`। প্রশ্ন ৩: একটা `CASE`, শর্তগুলো কড়া থেকে নরম ক্রমে, প্রতিটা `EXISTS` দিয়ে।
+</Solution>
+
+<Solution>
+**১.** লেখকের দল, কিন্তু ধারের সংখ্যাও লাগবে, তাই `LEFT JOIN`:
+
+```sql
+SELECT b.author, COUNT(DISTINCT b.id) AS books, COUNT(l.id) AS loans
+FROM books b
+LEFT JOIN loans l ON l.book_id = b.id
+GROUP BY b.author
+HAVING COUNT(DISTINCT b.id) >= 2
+ORDER BY loans DESC;
+```
+
+রবীন্দ্রনাথ ঠাকুর (৩টা বই, ৫ বার), বিভূতিভূষণ (২টা, ৩ বার), নজরুল (২টা, ১ বার)। JOIN-এর পর বই একাধিকবার আসে, তাই বই গুনতে `COUNT(DISTINCT b.id)`।
+
+**২.** "সর্বোচ্চ" খুঁজতে Derived Table-এর ভেতর `MAX`:
+
+```sql
+SELECT m.name, COUNT(*) AS loans
+FROM members m
+JOIN loans l ON l.member_id = m.id
+GROUP BY m.id, m.name
+HAVING COUNT(*) = (
+  SELECT MAX(c) FROM (SELECT COUNT(*) AS c FROM loans GROUP BY member_id) AS t
+);
+```
+
+রাফি, ৩ বার। `ORDER BY ... LIMIT 1` দিলে সমান সংখ্যার দ্বিতীয়জন হারিয়ে যেত।
+
+**৩.** প্রতিটা সদস্যের জন্য দুটো Correlated Subquery আর একটা `CASE`:
+
+```sql
+SELECT m.name,
+  CASE
+    WHEN EXISTS (SELECT 1 FROM loans l WHERE l.member_id = m.id
+                 AND l.returned_on IS NULL AND l.due_on < '2026-11-16') THEN 'জরিমানা বাকি'
+    WHEN EXISTS (SELECT 1 FROM loans l WHERE l.member_id = m.id
+                 AND l.returned_on IS NULL) THEN 'বই হাতে আছে'
+    WHEN EXISTS (SELECT 1 FROM loans l WHERE l.member_id = m.id) THEN 'পরিষ্কার'
+    ELSE 'নতুন'
+  END AS status
+FROM members m
+ORDER BY m.id;
+```
+
+| name | status |
+| --- | --- |
+| রাফি | জরিমানা বাকি |
+| নুসরাত | জরিমানা বাকি |
+| মীম | বই হাতে আছে |
+| হাসান স্যার | বই হাতে আছে |
+| রুমানা ম্যাডাম | বই হাতে আছে |
+| তানভীর | নতুন |
+
+`CASE`-এর ক্রম এখানে জীবন-মরণ: সবচেয়ে কড়া অবস্থা ("জরিমানা বাকি") সবার ওপরে। জোন ২ জয় করলে! 🏙️
+</Solution>
+</Boss>
+
+<Summary slug="boss-2" />
+
+<Checkpoint questions={[
+  { q: "loans টেবিলে (book_id, member_id) Primary Key কেন ভালো না?", options: ["দুটো Column-এ Key হয় না", "একই সদস্য একই বই একাধিকবার নিতে পারে", "Foreign Key-তে Primary Key হয় না", "ENUM-এর জন্য"], answer: 1, why: "প্রতিটা ধার আলাদা ঘটনা; যৌথ Key থাকলে দ্বিতীয়বার ধার নেওয়াই আটকে যেত।" },
+  { q: "তাকে কয় কপি আছে হিসাবে returned_on IS NULL শর্ত কোথায় দেবে?", options: ["WHERE-এ", "LEFT JOIN-এর ON-এ", "HAVING-এ", "ORDER BY-তে"], answer: 1, why: "WHERE-এ দিলে যে বই এখন কারো কাছে নেই সেগুলো বাদ পড়ে যেত।" },
+  { q: "AVG(DATEDIFF(returned_on, borrowed_on))-এ ফেরত না দেওয়া বইগুলোর কী হয়?", options: ["০ দিন ধরা হয়", "বাদ পড়ে, কারণ ফলাফল NULL", "Error", "আজকের তারিখ ধরা হয়"], answer: 1, why: "NULL-এর সাথে যেকোনো হিসাব NULL, আর AVG NULL উপেক্ষা করে।" },
+  { q: "JOIN-এর পর লেখকের বই গুনতে কোনটা ঠিক?", options: ["COUNT(*)", "COUNT(l.id)", "COUNT(DISTINCT b.id)", "SUM(b.id)"], answer: 2, why: "JOIN-এ একটা বই প্রতিটা ধারের জন্য একবার করে আসে।" },
+  { q: "ENUM('ছাত্র', 'শিক্ষক') Column-এ 'অতিথি' দিলে strict mode-এ কী হয়?", options: ["চুপচাপ বসে যায়", "খালি লেখা বসে", "Error দেয়", "ছাত্র ধরা হয়"], answer: 2, why: "ENUM শুধু তালিকার মান নেয়; strict mode-এ বাইরের মান error দেয়।" },
+  { q: "'সবচেয়ে বেশি ধার নিয়েছে' — সমান হলে সবাইকে আনতে কোনটা ঠিক?", options: ["ORDER BY ... LIMIT 1", "HAVING COUNT(*) = (SELECT MAX ...)", "WHERE COUNT(*) = MAX", "DISTINCT"], answer: 1, why: "LIMIT 1 সমান নম্বরের দ্বিতীয়জনকে ফেলে দেয়।" }
+]} />

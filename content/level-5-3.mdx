@@ -1,0 +1,465 @@
+<Mission>
+- অ্যাসাইনমেন্টের প্রশ্ন ২ শূন্য থেকে: ভাঙা, হাতে উত্তর, ধাপে ধাপে Query, যাচাই
+- (i) "নিজের ব্রাঞ্চের গড়ের চেয়ে বেশি": বড় প্রশ্নের ভেতরের ছোট প্রশ্ন আলাদা করা, আর সেটা View-এ রাখা
+- (ii) দুটো শর্ত, একটা JOIN, আর সাজানো: `AND`/`OR`-এর অগ্রাধিকার আর তারিখের সীমানা
+- (iii) একই টেবিল দুবার (Self Join), আর যার কোনো supervisor নেই তার কী হবে
+</Mission>
+
+<Note title="শুরুর আগে: Database নামাও">
+খাতা: [q2-staff.sql](/sql/assignment/q2-staff.sql)। চালাও `mysql -u root -p < q2-staff.sql`, তারপর `USE asg_staff;` (phpMyAdmin হলে **Import**)। নিজের কম্পিউটারে কিছু না থাকলে প্রতিটা Query-র নিচের **চালাও** বোতাম আর নিচের প্লেগ্রাউন্ড ব্যবহার করো।
+
+টেবিলের নাম এখানে বড় হাতের অক্ষরে শুরু (`Staff`, `Branch`), প্রশ্নে যেভাবে আছে। Linux-এ MySQL টেবিলের নামে বড়-ছোট হাতের পার্থক্য ধরে, তাই হুবহু লেখো।
+</Note>
+
+## প্রশ্ন
+
+> **2.** Consider the following tables:
+>
+> Staff (<u>staff_id</u>, sname, designation, join_date, supervisor_id, salary, branch_id)<br />
+> Branch (<u>branch_id</u>, bname, city)
+>
+> **(i)** Create a SQL view that shows the details of each staff member whose salary is greater than the average salary of his or her own branch.<br />
+> **(ii)** Write a SQL query to find all staff members who work in branch 101 or 104 and joined after 1 January 2020. Return the staff name, branch ID and branch name, sorted by salary in descending order.<br />
+> **(iii)** Write a SQL query to display the name of each staff member together with the name of his or her supervisor.
+
+## Database চেনা
+
+### টেবিলের গঠন
+
+| টেবিল | Column | টাইপ | চাবি | মানে |
+| --- | --- | --- | --- | --- |
+| `Branch` | `branch_id` | `INT` | PK | ব্রাঞ্চের নম্বর |
+| | `bname` | `VARCHAR(50)` | | ব্রাঞ্চের নাম |
+| | `city` | `VARCHAR(50)` | | শহর |
+| `Staff` | `staff_id` | `INT` | PK | স্টাফের নম্বর |
+| | `sname` | `VARCHAR(50)` | | নাম |
+| | `designation` | `VARCHAR(50)` | | পদ |
+| | `join_date` | `DATE` | | যোগদানের তারিখ |
+| | `supervisor_id` | `INT` (NULL হতে পারে) | FK → `Staff.staff_id` | তাঁর বস, **একই টেবিলের** আরেকজন |
+| | `salary` | `DECIMAL(10,2)` | | বেতন |
+| | `branch_id` | `INT` | FK → `Branch` | কোন ব্রাঞ্চে কাজ করেন |
+
+### সম্পর্ক
+
+<Flow steps={[
+  "Staff.branch_id → Branch.branch_id (কোথায় কাজ করেন)",
+  "Staff.supervisor_id → Staff.staff_id (কে বস; নিজের টেবিলেই)"
+]} />
+
+দ্বিতীয় তীরটাই মজার: `supervisor_id` অন্য কোনো টেবিলকে না, **`Staff`-কেই** নির্দেশ করে। এটাকে বলে Self-referencing (Recursive) সম্পর্ক। (iii)-এ এটাই লাগবে।
+
+### পুরো ডেটা
+
+`Branch` (৫টা):
+
+| branch_id | bname | city |
+| --- | --- | --- |
+| 101 | Gulshan | Dhaka |
+| 102 | Agrabad | Chattogram |
+| 103 | Zindabazar | Sylhet |
+| 104 | Dhanmondi | Dhaka |
+| 105 | Sonadanga | Khulna |
+
+`Staff` (১৫ জন), ব্রাঞ্চ ধরে সাজানো:
+
+| staff_id | sname | designation | join_date | supervisor_id | salary | branch_id |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Kamal Hossain | Managing Director | 2015-03-01 | NULL | 150000.00 | 101 |
+| 2 | Rina Akter | Branch Manager | 2017-06-15 | 1 | 90000.00 | 101 |
+| 3 | Sohel Rana | Officer | 2020-01-01 | 2 | 45000.00 | 101 |
+| 4 | Tania Islam | Officer | 2021-08-10 | 2 | 52000.00 | 101 |
+| 5 | Arman Kabir | Assistant | 2022-02-20 | 4 | 30000.00 | 101 |
+| 6 | Jamal Uddin | Branch Manager | 2016-09-01 | 1 | 85000.00 | 102 |
+| 7 | Shirin Sultana | Officer | 2019-11-11 | 6 | 50000.00 | 102 |
+| 8 | Rakib Hasan | Assistant | 2023-04-01 | 7 | 28000.00 | 102 |
+| 9 | Nadia Chowdhury | Branch Manager | 2018-01-20 | 1 | 80000.00 | 103 |
+| 10 | Faisal Ahmed | Officer | 2020-05-05 | 9 | 48000.00 | 103 |
+| 15 | Polash Sarkar | Officer | 2022-09-09 | 9 | 64000.00 | 103 |
+| 11 | Mahmud Hasan | Branch Manager | 2019-12-31 | 1 | 88000.00 | 104 |
+| 12 | Sumaiya Rahman | Officer | 2021-03-15 | 11 | 55000.00 | 104 |
+| 13 | Tareq Aziz | Officer | 2024-07-01 | 11 | 55000.00 | 104 |
+| 14 | Lima Khatun | Assistant | 2025-01-10 | 12 | 32000.00 | 104 |
+
+### ডেটার ভেতরে লুকানো ফাঁদ
+
+- **Kamal**-এর `supervisor_id` `NULL`: তিনি সবার ওপরে।
+- **Sohel** ঠিক **2020-01-01**-এ যোগ দিয়েছেন, **Mahmud** তার এক দিন আগে। "after 1 January 2020"-এর সীমানা এরাই পরীক্ষা করবে।
+- **Sumaiya** আর **Tareq**-এর বেতন সমান: সাজানোর সময় কে আগে?
+- **Polash**-এর বেতন (৬৪,০০০) ঠিক তাঁর ব্রাঞ্চের গড়ের সমান, কিন্তু পুরো কোম্পানির গড়ের চেয়ে বেশি।
+- ১০৫ নম্বর ব্রাঞ্চে কেউ নেই।
+
+<Playground db="q2-staff" />
+
+## (i) নিজের ব্রাঞ্চের গড়ের চেয়ে বেশি
+
+**দ্রুত পথ:** [এই প্রশ্নের টেমপ্লেট খোলো](/templates?p=own-group), নিজের নাম বসিয়ে চালাও। নিচে পুরো ভাঙা, ধাপে ধাপে।
+
+### ধাপ ১: নিজের ভাষায় বলো
+
+"প্রতিটা স্টাফের বেতনকে **তাঁর নিজের ব্রাঞ্চের** গড় বেতনের সাথে তুলনা করো; বেশি হলে তাঁর সব তথ্য দেখাও। আর এই Query-টা একটা View হিসেবে সংরক্ষণ করো।" প্রতিটা Row = একজন স্টাফ।
+
+### ধাপ ২: শব্দ দাগাও
+
+| প্রশ্নের অংশ | মানে | SQL-এ |
+| --- | --- | --- |
+| "Create a SQL view" | Query-টা নাম দিয়ে রাখো | `CREATE VIEW ... AS SELECT ...` |
+| "details of each staff member" | `Staff`-এর সব Column | `SELECT s.*` |
+| "average salary of **his or her own** branch" | গড়টা **প্রতিজনের জন্য আলাদা** | Correlated Subquery, বা ব্রাঞ্চের গড়ের টেবিলের সাথে JOIN |
+| "greater than" | কড়াভাবে বেশি | `>` (সমান হলে না) |
+
+এখানে একটা **ভেতরের প্রশ্ন** লুকিয়ে আছে: "প্রতিটা ব্রাঞ্চের গড় বেতন কত?" বড় প্রশ্ন সমাধানের আগে এটার উত্তর আলাদা বের করে নিলে বাকিটা সহজ তুলনা।
+
+### ধাপ ৩: হাতে উত্তর
+
+| ব্রাঞ্চ | বেতনগুলো | গড় | গড়ের চেয়ে বেশি |
+| --- | --- | --- | --- |
+| 101 | 150000, 90000, 45000, 52000, 30000 | 73400 | Kamal, Rina |
+| 102 | 85000, 50000, 28000 | 54333.33 | Jamal |
+| 103 | 80000, 48000, 64000 | 64000 | Nadia (Polash **সমান**, তাই না) |
+| 104 | 88000, 55000, 55000, 32000 | 57500 | Mahmud |
+
+উত্তর: **Kamal, Rina, Jamal, Nadia, Mahmud**, মোট ৫ জন।
+
+### ধাপ ৪: ধাপে ধাপে বানাও
+
+ভেতরের প্রশ্ন আগে, একা:
+
+<Run db="q2-staff">
+```sql
+SELECT branch_id, AVG(salary) AS avg_salary, COUNT(*) AS staff_count
+FROM Staff
+GROUP BY branch_id;
+```
+</Run>
+
+হাতের টেবিলের সাথে মিলেছে। এখন দুটো রাস্তা: (ক) এই গড়ের টেবিলটা প্রতিটা স্টাফের সাথে JOIN করে তুলনা, অথবা (খ) প্রতিটা স্টাফের জন্য এই হিসাবটা Subquery-তে আবার চালানো। আগে (খ), কারণ View-এ এটাই সবচেয়ে প্রচলিত।
+
+একজনের জন্য পরীক্ষা: Polash (branch 103)-এর ব্রাঞ্চের গড় কত?
+
+<Run db="q2-staff">
+```sql
+SELECT AVG(s2.salary) FROM Staff s2 WHERE s2.branch_id = 103;
+```
+</Run>
+
+৬৪,০০০। এখন `103`-এর জায়গায় বাইরের স্টাফের `branch_id` বসাই (`s2.branch_id = s.branch_id`)। এটাই Correlated Subquery: ভেতরের Query বাইরের Row-এর মান ব্যবহার করে, তাই প্রতিটা স্টাফের জন্য আলাদা গড়।
+
+### উত্তর
+
+<Run db="q2-staff">
+```sql
+CREATE OR REPLACE VIEW above_branch_avg AS
+SELECT s.*
+FROM Staff s
+WHERE s.salary > (
+  SELECT AVG(s2.salary)
+  FROM Staff s2
+  WHERE s2.branch_id = s.branch_id
+);
+
+SELECT * FROM above_branch_avg ORDER BY branch_id, salary DESC;
+```
+</Run>
+
+| staff_id | sname | designation | join_date | supervisor_id | salary | branch_id |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Kamal Hossain | Managing Director | 2015-03-01 | NULL | 150000.00 | 101 |
+| 2 | Rina Akter | Branch Manager | 2017-06-15 | 1 | 90000.00 | 101 |
+| 6 | Jamal Uddin | Branch Manager | 2016-09-01 | 1 | 85000.00 | 102 |
+| 9 | Nadia Chowdhury | Branch Manager | 2018-01-20 | 1 | 80000.00 | 103 |
+| 11 | Mahmud Hasan | Branch Manager | 2019-12-31 | 1 | 88000.00 | 104 |
+
+হাতের ৫ জন। View বানানোর পর সেটাকে সাধারণ টেবিলের মতোই `SELECT` করা যায়। খাতায় শুধু `CREATE VIEW` অংশটাই উত্তর; নিচের `SELECT` হলো যাচাই।
+
+### আলোচনা
+
+**দ্বিতীয় উপায়: গড়ের টেবিলের সাথে JOIN।** ধাপ ৪-এর প্রথম Query-টাকে Derived Table বানিয়ে জুড়ে দিই:
+
+<Run db="q2-staff">
+```sql
+CREATE OR REPLACE VIEW above_branch_avg_v2 AS
+SELECT s.*
+FROM Staff s
+JOIN (
+  SELECT branch_id, AVG(salary) AS avg_salary
+  FROM Staff
+  GROUP BY branch_id
+) b ON b.branch_id = s.branch_id
+WHERE s.salary > b.avg_salary;
+
+SELECT staff_id, sname, salary, branch_id FROM above_branch_avg_v2 ORDER BY staff_id;
+```
+</Run>
+
+একই ৫ জন। এই রূপে গড় প্রতিটা ব্রাঞ্চে একবারই হিসাব হয়, আর চাইলে `b.avg_salary`-ও Column হিসেবে দেখানো যায়। লেভেল ৪.২-এর Window দিয়েও করা যায় (`AVG(salary) OVER (PARTITION BY branch_id)`), কিন্তু তখন একটা বাইরের Query লাগবে, কারণ Window-এর মান `WHERE`-এ সরাসরি বসে না।
+
+<BugMonster title="(i)-এর ফাঁদ">
+
+**১. "নিজের" শব্দটা উপেক্ষা।** ভেতরের Subquery-তে `WHERE s2.branch_id = s.branch_id` না দিলে পুরো কোম্পানির গড় (৬৩,৪৬৬.৬৭) আসে, আর তখন **Polash**-ও ঢুকে যান (৬৪,০০০ > ৬৩,৪৬৬.৬৭)। নিচে চালিয়ে দেখো।
+
+**২. `WHERE salary > AVG(salary)`।** Aggregate `WHERE`-এ বসে না: `ERROR 1111: Invalid use of group function`। গড়টা আলাদা Subquery-তে বের করতে হয়।
+
+**৩. `>=` লেখা।** "greater than" মানে কড়াভাবে বেশি; `>=` দিলে Polash চলে আসেন।
+
+**৪. View-এর ভেতরে `ORDER BY`।** MySQL অনুমতি দেয়, কিন্তু View-কে কেউ অন্যভাবে সাজিয়ে পড়লে সেটা উপেক্ষিত হয়। সাজানো রাখো View থেকে পড়ার সময়।
+
+</BugMonster>
+
+<Run db="q2-staff">
+```sql
+-- ভুল: সবার গড়ের সাথে তুলনা, "নিজের ব্রাঞ্চ" হারিয়ে গেছে
+SELECT s.staff_id, s.sname, s.salary, s.branch_id
+FROM Staff s
+WHERE s.salary > (SELECT AVG(salary) FROM Staff)
+ORDER BY s.staff_id;
+```
+</Run>
+
+৬ জন, Polash বাড়তি। হাতের উত্তর না থাকলে "দেখতে তো ঠিকই লাগছে" ভেবে জমা দিয়ে দিতে।
+
+## (ii) ব্রাঞ্চ 101 বা 104, ২০২০-এর পরে
+
+**দ্রুত পথ:** [এই প্রশ্নের টেমপ্লেট খোলো](/templates?p=filter-join), নিজের নাম বসিয়ে চালাও। নিচে পুরো ভাঙা, ধাপে ধাপে।
+
+### ধাপ ১: নিজের ভাষায় বলো
+
+"যাঁরা ১০১ **অথবা** ১০৪ নম্বর ব্রাঞ্চে কাজ করেন, **এবং** ১ জানুয়ারি ২০২০-এর **পরে** যোগ দিয়েছেন, তাঁদের নাম, ব্রাঞ্চ আইডি আর ব্রাঞ্চের নাম; বেশি বেতন আগে।"
+
+### ধাপ ২: শব্দ দাগাও
+
+| প্রশ্নের অংশ | মানে | SQL-এ |
+| --- | --- | --- |
+| "staff name, branch ID and branch name" | ব্রাঞ্চের নাম `Branch`-এ আছে | `JOIN Branch` |
+| "branch 101 or 104" | একটা Column, দুটো মান | `s.branch_id IN (101, 104)` |
+| "and joined after 1 January 2020" | দ্বিতীয় শর্ত | `AND s.join_date > '2020-01-01'` |
+| "sorted by salary in descending order" | সাজানো, যদিও বেতন দেখাতে বলেনি | `ORDER BY s.salary DESC` |
+
+`SELECT`-এ না থাকা Column দিয়েও `ORDER BY` করা যায়। আর "after 1 January 2020" মানে ১ জানুয়ারি নিজে **না**, তার পর থেকে।
+
+### ধাপ ৩: হাতে উত্তর
+
+ব্রাঞ্চ ১০১: Kamal (2015), Rina (2017) বাদ; **Sohel (2020-01-01) বাদ**, কারণ ঠিক সেই দিনটা "পরে" না; Tania (2021) আর Arman (2022) থাকবেন।
+ব্রাঞ্চ ১০৪: **Mahmud (2019-12-31) বাদ**; Sumaiya (2021), Tareq (2024), Lima (2025) থাকবেন।
+
+বেতন অনুযায়ী: Sumaiya ৫৫,০০০ = Tareq ৫৫,০০০, Tania ৫২,০০০, Lima ৩২,০০০, Arman ৩০,০০০। **৫ জন।**
+
+### ধাপ ৪: ধাপে ধাপে বানাও
+
+আগে JOIN আর দুই শর্ত, সাথে `salary` আর `join_date` রাখি শুধু নিজে যাচাই করার জন্য:
+
+<Run db="q2-staff">
+```sql
+SELECT s.sname, s.branch_id, b.bname, s.join_date, s.salary
+FROM Staff s
+JOIN Branch b ON b.branch_id = s.branch_id
+WHERE s.branch_id IN (101, 104)
+  AND s.join_date > '2020-01-01'
+ORDER BY s.salary DESC;
+```
+</Run>
+
+হাতের ৫ জন মিলেছে। এবার যাচাইয়ের Column-গুলো সরিয়ে প্রশ্ন যা চেয়েছে শুধু তা রাখি। সমান বেতনে (Sumaiya, Tareq) ক্রম যেন প্রতিবার একই থাকে, তাই দ্বিতীয় সাজানোর চাবি হিসেবে নাম দিই।
+
+### উত্তর
+
+<Run db="q2-staff">
+```sql
+SELECT s.sname, s.branch_id, b.bname
+FROM Staff s
+JOIN Branch b ON b.branch_id = s.branch_id
+WHERE s.branch_id IN (101, 104)
+  AND s.join_date > '2020-01-01'
+ORDER BY s.salary DESC, s.sname;
+```
+</Run>
+
+| sname | branch_id | bname |
+| --- | --- | --- |
+| Sumaiya Rahman | 104 | Dhanmondi |
+| Tareq Aziz | 104 | Dhanmondi |
+| Tania Islam | 101 | Gulshan |
+| Lima Khatun | 104 | Dhanmondi |
+| Arman Kabir | 101 | Gulshan |
+
+### আলোচনা
+
+<BugMonster title="(ii)-এর ফাঁদ">
+
+**১. `OR`-এর অগ্রাধিকার।** `WHERE s.branch_id = 101 OR s.branch_id = 104 AND s.join_date > '2020-01-01'` লিখলে MySQL পড়ে `101 OR (104 AND তারিখ)`, কারণ `AND` আগে খাটে (লেভেল ৫)। ফলে ১০১-এর **সবাই** চলে আসেন, ২০১৫-র Kamal-ও। হয় `IN` লেখো, নয়তো `(... OR ...)` বন্ধনীতে মুড়ো। নিচে চালিয়ে দেখো।
+
+**২. `SELECT branch_id`, সামনে টেবিলের নাম ছাড়া।** দুই টেবিলেই `branch_id` আছে: `ERROR 1052: Column 'branch_id' in field list is ambiguous`। `s.branch_id` লেখো। (মান একই, তাই `b.branch_id`-ও চলত।)
+
+**৩. সীমানা।** `>=` দিলে Sohel ঢোকেন। প্রশ্ন "after" বলেছে, তাই `>`। পরীক্ষার খাতায় এক লাইনে লিখে দাও কোনটা ধরেছ।
+
+**৪. `YEAR(join_date) >= 2020`।** "২০২০ সাল বা তার পরে" আর "১ জানুয়ারি ২০২০-এর পরে" আলাদা: প্রথমটায় Sohel থাকেন। তাছাড়া Column-কে Function-এ মুড়লে Index কাজ করে না (লেভেল ১৬)।
+
+</BugMonster>
+
+<Run db="q2-staff">
+```sql
+-- ভুল: বন্ধনী নেই, তাই AND আগে খাটছে
+SELECT s.sname, s.branch_id, s.join_date
+FROM Staff s
+WHERE s.branch_id = 101 OR s.branch_id = 104 AND s.join_date > '2020-01-01'
+ORDER BY s.branch_id, s.join_date;
+```
+</Run>
+
+৮ জন। ব্রাঞ্চ ১০১-এর পাঁচজনের সবাই, কারণ তাঁদের জন্য তারিখের শর্তটা পরীক্ষাই হয়নি।
+
+## (iii) প্রত্যেকের supervisor-এর নাম
+
+**দ্রুত পথ:** [এই প্রশ্নের টেমপ্লেট খোলো](/templates?p=self-join), নিজের নাম বসিয়ে চালাও। নিচে পুরো ভাঙা, ধাপে ধাপে।
+
+### ধাপ ১: নিজের ভাষায় বলো
+
+"প্রতিটা স্টাফের নাম, আর পাশে তাঁর supervisor-এর নাম।" প্রতিটা Row = একজন স্টাফ, তাই **১৫টা Row** আসা উচিত।
+
+### ধাপ ২: শব্দ দাগাও
+
+| প্রশ্নের অংশ | মানে | SQL-এ |
+| --- | --- | --- |
+| "name of each staff member" | স্টাফ হিসেবে `Staff` | `Staff s` |
+| "name of his or her supervisor" | supervisor-ও `Staff`-এর একজন | **আবার** `Staff`, অন্য নামে: `Staff sup` |
+| "each" | যাঁর supervisor নেই, তিনিও | `LEFT JOIN` |
+
+একই টেবিল দুবার লাগবে, দুটো আলাদা ভূমিকায়: একবার "কর্মী" হিসেবে, একবার "বস" হিসেবে। Alias (`s`, `sup`) ছাড়া এটা লেখাই যায় না। এটাই Self Join (লেভেল ১১)।
+
+<Analogy>
+একটা ক্লাসের তালিকার দুটো ফটোকপি নাও। বাঁ হাতের কপিতে প্রতিটা ছাত্রের পাশে লেখা তার "মনিটরের রোল নম্বর"। ডান হাতের কপিতে সেই রোল নম্বর খুঁজে মনিটরের নাম পড়ো। কাগজ একটাই, শুধু দুটো কপি দুই কাজে লাগছে।
+</Analogy>
+
+### ধাপ ৩: হাতে উত্তর
+
+Rina-র `supervisor_id` = 1 → staff 1 = Kamal। Arman-এর ৪ → Tania। Lima-র ১২ → Sumaiya। আর Kamal-এর `NULL` → কেউ না। ১৫ জনের মধ্যে ১৪ জনের supervisor আছে, Kamal-এর নেই।
+
+### ধাপ ৪: ধাপে ধাপে বানাও
+
+প্রথমে সাধারণ `JOIN`:
+
+<Run db="q2-staff">
+```sql
+SELECT s.sname AS staff_name, sup.sname AS supervisor_name
+FROM Staff s
+JOIN Staff sup ON sup.staff_id = s.supervisor_id
+ORDER BY s.staff_id;
+```
+</Run>
+
+১৪টা Row। **Kamal নেই!** `INNER JOIN` শুধু মিল-পাওয়া Row রাখে, আর `NULL`-এর সাথে কিছুই মেলে না। প্রশ্ন বলেছে "each staff member", তাই Kamal-কেও রাখতে হবে।
+
+### উত্তর
+
+<Run db="q2-staff">
+```sql
+SELECT s.sname AS staff_name, sup.sname AS supervisor_name
+FROM Staff s
+LEFT JOIN Staff sup ON sup.staff_id = s.supervisor_id
+ORDER BY s.staff_id;
+```
+</Run>
+
+| staff_name | supervisor_name |
+| --- | --- |
+| Kamal Hossain | NULL |
+| Rina Akter | Kamal Hossain |
+| Sohel Rana | Rina Akter |
+| Tania Islam | Rina Akter |
+| Arman Kabir | Tania Islam |
+| Jamal Uddin | Kamal Hossain |
+| Shirin Sultana | Jamal Uddin |
+| Rakib Hasan | Shirin Sultana |
+| Nadia Chowdhury | Kamal Hossain |
+| Faisal Ahmed | Nadia Chowdhury |
+| Mahmud Hasan | Kamal Hossain |
+| Sumaiya Rahman | Mahmud Hasan |
+| Tareq Aziz | Mahmud Hasan |
+| Lima Khatun | Sumaiya Rahman |
+| Polash Sarkar | Nadia Chowdhury |
+
+১৫টা Row, সবাই আছেন।
+
+### আলোচনা
+
+**`NULL`-এর জায়গায় সুন্দর লেখা:** রিপোর্টে "NULL" দেখতে ভালো লাগে না। `COALESCE` প্রথম না-`NULL` মানটা দেয়:
+
+<Run db="q2-staff">
+```sql
+SELECT s.sname AS staff_name,
+       COALESCE(sup.sname, '(No supervisor)') AS supervisor_name
+FROM Staff s
+LEFT JOIN Staff sup ON sup.staff_id = s.supervisor_id
+ORDER BY s.staff_id;
+```
+</Run>
+
+**কোনটা `ON`-এ যায়?** `sup.staff_id = s.supervisor_id`: "বসের আইডি = কর্মীর supervisor-ঘর"। উল্টো লিখলে (`s.staff_id = sup.supervisor_id`) প্রতিটা Row-তে বসের নাম না, **অধীনস্থের** নাম আসবে, আর যাঁদের অধীনে কেউ নেই তাঁরা NULL পাবেন। Self Join-এ কোন alias কোন ভূমিকায়, সেটা নামেই পরিষ্কার রাখো (`s` = staff, `sup` = supervisor); `s1`, `s2` নাম দিলে এই ভুলটা সহজে হয়।
+
+<Remember>
+**প্রশ্নে "each" থাকলে আগে গুনে নাও কয়টা Row আসা উচিত** (এখানে ১৫)। উত্তরে কম Row এলে কোথাও `INNER JOIN` কাউকে ফেলে দিয়েছে; বেশি এলে কোথাও JOIN ডুপ্লিকেট বানিয়েছে।
+</Remember>
+
+## পুরো উত্তর এক জায়গায়
+
+```sql
+-- (i)
+CREATE VIEW above_branch_avg AS
+SELECT s.*
+FROM Staff s
+WHERE s.salary > (SELECT AVG(s2.salary)
+                  FROM Staff s2
+                  WHERE s2.branch_id = s.branch_id);
+
+-- (ii)
+SELECT s.sname, s.branch_id, b.bname
+FROM Staff s
+JOIN Branch b ON b.branch_id = s.branch_id
+WHERE s.branch_id IN (101, 104)
+  AND s.join_date > '2020-01-01'
+ORDER BY s.salary DESC;
+
+-- (iii)
+SELECT s.sname AS staff_name, sup.sname AS supervisor_name
+FROM Staff s
+LEFT JOIN Staff sup ON sup.staff_id = s.supervisor_id;
+```
+
+<Quest id="1" title="যাঁর অধীনে কেউ নেই">
+কোন স্টাফদের অধীনে কেউ কাজ করেন না (কারো `supervisor_id` তাঁদের দিকে নির্দেশ করে না)?
+
+<Solution>
+```sql
+SELECT s.staff_id, s.sname
+FROM Staff s
+WHERE NOT EXISTS (SELECT 1 FROM Staff x WHERE x.supervisor_id = s.staff_id)
+ORDER BY s.staff_id;
+```
+
+Sohel, Arman, Rakib, Faisal, Tareq, Lima, Polash: ৭ জন। `NOT IN (SELECT supervisor_id FROM Staff)` লিখলে **কেউ আসবে না**, কারণ ওই তালিকায় Kamal-এর `NULL` আছে, আর `x NOT IN (..., NULL)` কখনো সত্য হয় না। চালিয়ে দেখো! `NOT IN`-এর ভেতরে `NULL` থাকতে পারলে `NOT EXISTS` নিরাপদ।
+</Solution>
+</Quest>
+
+<Quest id="2" title="নিজের supervisor-এর চেয়ে বেশি">
+কোন স্টাফের বেতন তাঁর supervisor-এর বেতনের চেয়ে বেশি? (এই ডেটায় উত্তর খালি হওয়া উচিত; কেন, ব্যাখ্যা করো।)
+
+<Solution>
+```sql
+SELECT s.sname, s.salary, sup.sname AS supervisor, sup.salary AS supervisor_salary
+FROM Staff s
+JOIN Staff sup ON sup.staff_id = s.supervisor_id
+WHERE s.salary > sup.salary;
+```
+
+০টা Row: এই কোম্পানিতে সবার বস তাঁর চেয়ে বেশি পান। এখানে `INNER JOIN`-ই ঠিক, কারণ যাঁর supervisor নেই, তাঁর সাথে তুলনারও কিছু নেই। প্লেগ্রাউন্ডে `UPDATE Staff SET salary = 60000 WHERE staff_id = 14;` চালিয়ে আবার দেখো: Lima (৬০,০০০) তাঁর supervisor Sumaiya-র (৫৫,০০০) চেয়ে বেশি।
+</Solution>
+</Quest>
+
+<Summary slug="level-5-3" />
+
+<Checkpoint questions={[
+  { q: "\"his or her own branch\"-এর গড় পেতে Subquery-তে কী লাগে?", options: ["GROUP BY branch_id", "WHERE s2.branch_id = s.branch_id (বাইরের Row-এর সাথে যোগ)", "ORDER BY salary", "LIMIT 1"], answer: 1, why: "Correlated Subquery প্রতিটা স্টাফের জন্য তাঁর ব্রাঞ্চের গড় আলাদা হিসাব করে। না দিলে পুরো কোম্পানির গড় আসে আর Polash ভুলভাবে ঢোকেন।" },
+  { q: "WHERE branch_id = 101 OR branch_id = 104 AND join_date > '2020-01-01' কী করে?", options: ["দুই ব্রাঞ্চেই তারিখের শর্ত খাটায়", "AND আগে খাটে, তাই ১০১-এর সবাই আসেন, তারিখ যা-ই হোক", "Error দেয়", "শুধু ১০৪ দেখায়"], answer: 1, why: "IN (101, 104) বা বন্ধনী দিয়ে লেখো।" },
+  { q: "\"joined after 1 January 2020\": 2020-01-01-এ যোগ দেওয়া Sohel কি আসবেন?", options: ["হ্যাঁ", "না, \"after\" মানে কড়াভাবে পরে, তাই >", "শুধু YEAR() দিলে", "Error"], answer: 1, why: ">= দিলে আসতেন। খাতায় ধরে নেওয়াটা লিখে দাও।" },
+  { q: "(iii)-এ JOIN দিলে Kamal কেন হারিয়ে যান?", options: ["তাঁর বেতন বেশি", "তাঁর supervisor_id NULL, আর INNER JOIN-এ NULL-এর সাথে কিছু মেলে না", "তিনি ১০১-এ", "হারান না"], answer: 1, why: "\"each staff member\" চাইলে LEFT JOIN।" },
+  { q: "Self Join-এ একই টেবিল দুবার লিখতে কী আবশ্যিক?", options: ["DISTINCT", "দুটো আলাদা alias (যেমন s আর sup)", "GROUP BY", "UNION"], answer: 1, why: "alias ছাড়া MySQL বুঝবে না কোন Column কোন কপির।" }
+]} />

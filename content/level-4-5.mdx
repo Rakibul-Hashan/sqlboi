@@ -1,0 +1,560 @@
+<Mission>
+- চারটা নতুন জগতে (জিম, রেস্তোরাঁ, বইয়ের দোকান, ক্রিকেট লিগ) **১৬টা প্রশ্ন**, সহজ থেকে বস পর্যন্ত
+- প্রতিটা প্রশ্নে আগে **ইঙ্গিত ১**, তারপর **ইঙ্গিত ২**, শেষে পুরো সমাধান; যতটা দরকার ততটাই খোলো
+- পুরো বইয়ের শেখা একসাথে: JOIN, Subquery, Division, View, Window, CTE
+</Mission>
+
+<Note title="শুরুর আগে">
+অ্যারেনার খাতা নামাও: [arena.sql](/sql/arena.sql)। এটা `arena` নামে একটা নতুন Database বানায়, তোমার `school`-এ হাত দেয় না। চালাও `mysql -u root -p < arena.sql`, তারপর `USE arena;`।
+</Note>
+
+<Tip title="কীভাবে খেলবে">
+প্রতিটা প্রশ্নে আগে **নিজে লেখো, চালাও**, তারপর সমাধানের সাথে মেলাও। আটকে গেলে একটা ইঙ্গিত খোলো, আবার চেষ্টা করো। সরাসরি সমাধান পড়ে ফেললে শেখা হয় অর্ধেক। নিজের কম্পিউটারে MySQL না থাকলে প্র্যাকটিসের জন্য [OurSQL](https://oursql.vercel.app/) সাইটটাও দেখতে পারো।
+</Tip>
+
+## মানচিত্র: চার জগতের টেবিল
+
+| জগৎ | টেবিল | কী আছে |
+| --- | --- | --- |
+| 🏋️ জিম | `trainer`, `program`, `member`, `enrolled` | প্রশিক্ষক, তাঁদের প্রোগ্রাম, সদস্য, কে কোন প্রোগ্রামে ভর্তি |
+| 🍛 রেস্তোরাঁ | `outlet`, `employee` | শাখা; কর্মী, তাঁর শাখা, ম্যানেজার (`manager_id`), বেতন, যোগদানের তারিখ |
+| 📚 বইয়ের দোকান | `customer`, `book`, `purchase` | ক্রেতা, বই (ক্যাটাগরি, দাম), কেনাকাটা (কয় কপি, কবে) |
+| 🏏 ক্রিকেট | `team`, `player`, `innings` | দল, খেলোয়াড়ের রান-উইকেট, প্রতি ম্যাচে দলের স্কোর |
+
+প্রতিটা প্রশ্ন শুরুর আগে টেবিলগুলোর সম্পর্ক কাগজে এঁকে নাও: কোন `_id` কোন টেবিলের `id`-কে নির্দেশ করে। অর্ধেক কাজ ওখানেই হয়ে যায়।
+
+## স্তর ১: সহজ
+
+একটা বা দুটো টেবিল, একটা নকশা।
+
+<Challenge id="1" tier="easy" title="রিয়াজের ছাত্র">
+প্রশিক্ষক রিয়াজের অন্তত একটা প্রোগ্রামে ভর্তি হয়েছে, এমন সদস্যদের নাম দাও (প্রত্যেকে একবার, `id` অনুযায়ী সাজানো)।
+
+<Solution title="ইঙ্গিত ১">
+চারটা টেবিলের শিকল: `member` → `enrolled` → `program` → `trainer`।
+</Solution>
+<Solution title="ইঙ্গিত ২">
+রিয়াজের দুটো প্রোগ্রাম, কেউ দুটোতেই থাকলে নাম দুবার আসবে। `DISTINCT`, নাকি `GROUP BY`? `DISTINCT` দিয়ে `ORDER BY m.id` লিখে চালিয়ে দেখো কী হয়।
+</Solution>
+<Solution>
+```sql
+SELECT m.name
+FROM member m
+JOIN enrolled e ON e.member_id = m.id
+JOIN program p  ON p.id = e.program_id
+JOIN trainer t  ON t.id = p.trainer_id
+WHERE t.name = 'রিয়াজ'
+GROUP BY m.id, m.name
+ORDER BY m.id;
+```
+
+| name |
+| --- |
+| আনিকা |
+| বাপ্পী |
+| শিহাব |
+
+`SELECT DISTINCT m.name ... ORDER BY m.id` লিখলে MySQL বলে `ERROR 3065: Expression #1 of ORDER BY clause is not in SELECT list ... incompatible with DISTINCT`। কারণ: একই নামের দুজন আলাদা `id`-র সদস্য থাকলে `DISTINCT` তাদের এক করে দিত, তখন কোন `id` দিয়ে সাজাবে? `GROUP BY m.id, m.name` এই দ্বিধা মেটায়, আর একই নামের দুজনকেও আলাদা রাখে।
+</Solution>
+</Challenge>
+
+<Challenge id="2" tier="easy" title="২০২২-এর পরে যোগ দিয়েছে">
+২ অথবা ৫ নম্বর শাখার যে কর্মীরা ২০২২ সালের **পরে** যোগ দিয়েছেন, তাঁদের নাম, শাখা আর যোগদানের তারিখ; আগে যোগ দেওয়া জন আগে।
+
+<Solution title="ইঙ্গিত ১">
+"২ অথবা ৫" মানে `IN (2, 5)`। "২০২২-এর পরে" মানে ২০২২ সালটাও বাদ।
+</Solution>
+<Solution title="ইঙ্গিত ২">
+`join_date > '2022-01-01'` লিখলে ২০২২-এর নভেম্বরে যোগ দেওয়া নীলাও চলে আসবে। শুরু হবে ২০২৩ থেকে।
+</Solution>
+<Solution>
+```sql
+SELECT name, outlet_id, join_date
+FROM employee
+WHERE outlet_id IN (2, 5)
+  AND join_date > '2022-12-31'
+ORDER BY join_date;
+```
+
+| name | outlet_id | join_date |
+| --- | --- | --- |
+| পলাশ | 2 | 2023-02-01 |
+| মিতু | 5 | 2023-08-12 |
+| রনি | 5 | 2024-04-05 |
+| আসিফ | 2 | 2025-01-15 |
+
+`YEAR(join_date) > 2022` লিখলেও একই উত্তর, কিন্তু Column-কে Function-এ মুড়ালে `join_date`-এর Index কাজে লাগে না (লেভেল ১৬)। তারিখের সীমা সরাসরি লেখা ভালো অভ্যাস।
+</Solution>
+</Challenge>
+
+<Challenge id="3" tier="easy" title="কেউ কেনেনি">
+কোন বই কেউ কখনো কেনেনি? SQL আর Relational Algebra দুটোতেই লেখো।
+
+<Solution title="ইঙ্গিত ১">
+"কখনো না" = অনস্তিত্ব। `NOT EXISTS`, বা `LEFT JOIN ... IS NULL`।
+</Solution>
+<Solution title="ইঙ্গিত ২">
+Relational Algebra-তে "না" মানে বিয়োগ (−): সব বইয়ের `id` থেকে কেনা বইয়ের `book_id` বাদ।
+</Solution>
+<Solution>
+```sql
+SELECT b.title
+FROM book b
+WHERE NOT EXISTS (SELECT 1 FROM purchase p WHERE p.book_id = b.id);
+```
+
+| title |
+| --- |
+| ছোটদের ছড়া |
+
+Relational Algebra:
+
+<Flow steps={[
+  "π id (book) − π book_id (purchase) → কেউ কেনেনি এমন id",
+  "ফলাফল ⋈ book → π title"
+]} />
+
+এক লাইনে: π title ( book ⋈ ( π id (book) − π book_id (purchase) ) )
+</Solution>
+</Challenge>
+
+<Challenge id="4" tier="easy" title="উইকেট শিকারি">
+১ অথবা ৩ নম্বর দলের যে খেলোয়াড়দের ১০-এর বেশি উইকেট আছে, তাঁদের নাম আর উইকেট; বেশি উইকেট আগে।
+
+<Solution>
+```sql
+SELECT name, wickets
+FROM player
+WHERE team_id IN (1, 3) AND wickets > 10
+ORDER BY wickets DESC;
+```
+
+| name | wickets |
+| --- | --- |
+| সিয়াম | 25 |
+| ফাহিম | 21 |
+| নয়ন | 14 |
+</Solution>
+</Challenge>
+
+## স্তর ২: মাঝারি
+
+এখন দুটো নকশা একসাথে, আর কোণার ফাঁদ।
+
+<Challenge id="5" tier="medium" title="কর্মী আর তাঁর ম্যানেজার">
+প্রত্যেক কর্মীর নামের পাশে তাঁর ম্যানেজারের নাম। যাঁর কোনো ম্যানেজার নেই, তিনিও তালিকায় থাকবেন।
+
+<Solution title="ইঙ্গিত ১">
+ম্যানেজারও একজন কর্মী, একই টেবিলে। একই টেবিল দুবার, দুটো আলাদা নামে (Self Join, লেভেল ১১)।
+</Solution>
+<Solution title="ইঙ্গিত ২">
+"যাঁর ম্যানেজার নেই, তিনিও থাকবেন": `INNER` নাকি `LEFT`?
+</Solution>
+<Solution>
+```sql
+SELECT e.name AS employee, m.name AS manager
+FROM employee e
+LEFT JOIN employee m ON m.id = e.manager_id
+ORDER BY e.id;
+```
+
+| employee | manager |
+| --- | --- |
+| করিম | NULL |
+| সুমি | করিম |
+| জামিল | করিম |
+| পলাশ | সুমি |
+| নীলা | সুমি |
+| রনি | জামিল |
+| মিতু | জামিল |
+| শাওন | করিম |
+| ঝুমা | করিম |
+| আসিফ | সুমি |
+
+`INNER JOIN` দিলে করিম হারিয়ে যেত। চাইলে `COALESCE(m.name, '(প্রধান)')`।
+</Solution>
+</Challenge>
+
+<Challenge id="6" tier="medium" title="২০২৫-এর বড় ক্যাটাগরি">
+২০২৫ সালে কোন ক্যাটাগরির মোট বিক্রি (কপি × দাম) ১৫০০ টাকার বেশি? বিক্রির অঙ্কসহ, বেশি আগে।
+
+<Solution title="ইঙ্গিত ১">
+বিক্রির অঙ্ক `purchase`-এ নেই, দাম আছে `book`-এ। JOIN করে `SUM(p.qty * b.price)`।
+</Solution>
+<Solution title="ইঙ্গিত ২">
+দুটো ছাঁকনি: সাল (প্রতিটা Row-এর ওপর, `WHERE`) আর ১৫০০ (দলের যোগফলের ওপর, `HAVING`)। কোনটা কোথায় যাবে?
+</Solution>
+<Solution>
+```sql
+SELECT b.category, SUM(p.qty * b.price) AS sales
+FROM purchase p
+JOIN book b ON b.id = p.book_id
+WHERE p.purchased_on >= '2025-01-01' AND p.purchased_on < '2026-01-01'
+GROUP BY b.category
+HAVING SUM(p.qty * b.price) > 1500
+ORDER BY sales DESC;
+```
+
+| category | sales |
+| --- | --- |
+| প্রোগ্রামিং | 3470.00 |
+| উপন্যাস | 1950.00 |
+
+ফাঁদ: সালের শর্ত ভুলে গেলে ২০২৪-এর ডিসেম্বরে সৌরভের কেনা বইটা ঢুকে উপন্যাস হয়ে যায় ২৩০০। আর `COUNT(*)` না, `qty` দিয়ে গুণ: ইশরাত একবারে দুই কপি কিনেছে।
+</Solution>
+</Challenge>
+
+<Challenge id="7" tier="medium" title="গড়ে কয়টা প্রোগ্রাম">
+প্রতি সদস্য গড়ে কয়টা প্রোগ্রামে ভর্তি (দুই দশমিক)? যাঁরা কোথাও ভর্তি হননি, তাঁরাও গড়ে ধরা হবেন।
+
+<Solution title="ইঙ্গিত ১">
+`enrolled` থেকে শুরু করলে কোনো প্রোগ্রামে না থাকা সদস্যরা হিসাবেই আসে না। শুরু করো `member` থেকে।
+</Solution>
+<Solution title="ইঙ্গিত ২">
+`LEFT JOIN` + `COUNT(ডানের কলাম)`, তারপর বাইরে `AVG` (লেভেল ৪.৪-এর নকশা ৪)।
+</Solution>
+<Solution>
+```sql
+SELECT ROUND(AVG(cnt), 2) AS avg_programs
+FROM (
+  SELECT m.id, COUNT(e.program_id) AS cnt
+  FROM member m
+  LEFT JOIN enrolled e ON e.member_id = m.id
+  GROUP BY m.id
+) t;
+```
+
+| avg_programs |
+| --- |
+| 1.67 |
+
+১০টা ভর্তি ÷ ৬ জন সদস্য। নাফিসা কোথাও নেই; তাকে বাদ দিলে ভুল উত্তর হতো ১০ ÷ ৫ = ২.০০।
+</Solution>
+</Challenge>
+
+<Challenge id="8" tier="medium" title="শাখার গড়ের চেয়ে বেশি">
+`above_outlet_avg` নামে একটা View বানাও: যে কর্মীদের বেতন নিজের শাখার গড় বেতনের চেয়ে বেশি।
+
+<Solution title="ইঙ্গিত ১">
+"নিজের শাখার" = Correlated Subquery: ভেতরের Query বাইরের Row-এর `outlet_id` ব্যবহার করবে।
+</Solution>
+<Solution>
+```sql
+CREATE OR REPLACE VIEW above_outlet_avg AS
+SELECT e.name, e.outlet_id, e.salary
+FROM employee e
+WHERE e.salary > (SELECT AVG(e2.salary) FROM employee e2 WHERE e2.outlet_id = e.outlet_id);
+
+SELECT * FROM above_outlet_avg ORDER BY outlet_id;
+```
+
+| name | outlet_id | salary |
+| --- | --- | --- |
+| করিম | 1 | 90000.00 |
+| সুমি | 2 | 55000.00 |
+| জামিল | 5 | 60000.00 |
+
+উত্তরা শাখায় শুধু ঝুমা; নিজের গড়ের চেয়ে কেউ নিজে বেশি হতে পারে না, তাই সে নেই। আর মিরপুরে কোনো কর্মীই নেই।
+</Solution>
+</Challenge>
+
+<Challenge id="9" tier="medium" title="সবচেয়ে দামি বইয়ের ক্রেতা">
+যাঁরা দোকানের সবচেয়ে দামি বই কিনেছেন, তাঁদের নাম।
+
+<Solution title="ইঙ্গিত ১">
+"সবচেয়ে দামি" একটা না-ও হতে পারে। `ORDER BY price DESC LIMIT 1` দিয়ে বই বাছলে কী হবে?
+</Solution>
+<Solution>
+```sql
+SELECT c.name
+FROM customer c
+JOIN purchase p ON p.customer_id = c.id
+JOIN book b     ON b.id = p.book_id
+WHERE b.price = (SELECT MAX(price) FROM book)
+GROUP BY c.id, c.name
+ORDER BY c.id;
+```
+
+| name |
+| --- |
+| রাহাত |
+| ইশরাত |
+| মাহি |
+
+দুটো বইয়ের দামই ৮০০ ("নদীর গল্প" আর "ডেটাবেস ডিজাইন")। `LIMIT 1` একটা বই বাছত, আর অন্যটার ক্রেতারা চুপচাপ বাদ পড়ত। `= (SELECT MAX ...)` দুটোকেই ধরে।
+</Solution>
+</Challenge>
+
+## স্তর ৩: কঠিন
+
+এখানে প্রতিটা প্রশ্নে বসের সমান XP।
+
+<Challenge id="10" tier="hard" title="রিয়াজের সব প্রোগ্রামে">
+কোন সদস্য রিয়াজের **প্রতিটা** প্রোগ্রামে ভর্তি?
+
+<Solution title="ইঙ্গিত ১">
+"প্রতিটা" = Relational Division। উল্টো করে ভাবো: "রিয়াজের এমন কোনো প্রোগ্রাম নেই, যেটায় সে ভর্তি **নয়**।"
+</Solution>
+<Solution title="ইঙ্গিত ২">
+দুইবার `NOT EXISTS`। বাইরেরটা রিয়াজের প্রোগ্রামের ওপর, ভেতরেরটা `enrolled`-এর ওপর।
+</Solution>
+<Solution>
+```sql
+SELECT m.name
+FROM member m
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM program p
+  JOIN trainer t ON t.id = p.trainer_id
+  WHERE t.name = 'রিয়াজ'
+    AND NOT EXISTS (
+      SELECT 1 FROM enrolled e
+      WHERE e.member_id = m.id AND e.program_id = p.id
+    )
+)
+ORDER BY m.id;
+```
+
+| name |
+| --- |
+| আনিকা |
+| শিহাব |
+
+বাপ্পী শুধু "শক্তি ১০১"-এ, তাই বাদ। গুনে মেলানোর উপায়েও করে দেখো: রিয়াজের প্রোগ্রামে ভর্তির `COUNT` = রিয়াজের মোট প্রোগ্রাম (২)।
+</Solution>
+</Challenge>
+
+<Challenge id="11" tier="hard" title="শহরের সেরা ক্রেতা">
+প্রতিটা শহরে কে সবচেয়ে বেশি টাকার বই কিনেছেন? শহর, নাম আর মোট খরচ; সমান হলে দুজনই।
+
+<Solution title="ইঙ্গিত ১">
+দুই ধাপ: (১) প্রত্যেক ক্রেতার মোট খরচ; (২) প্রতিটা শহরের ভেতরে র‍্যাঙ্ক। দুটো CTE।
+</Solution>
+<Solution title="ইঙ্গিত ২">
+`RANK() OVER (PARTITION BY city ORDER BY total DESC)`, তারপর বাইরে `WHERE rk = 1`। সমানে দুজনই চাই, তাই `ROW_NUMBER` না।
+</Solution>
+<Solution>
+```sql
+WITH spend AS (
+  SELECT c.city, c.name, SUM(p.qty * b.price) AS total
+  FROM customer c
+  JOIN purchase p ON p.customer_id = c.id
+  JOIN book b     ON b.id = p.book_id
+  GROUP BY c.id, c.city, c.name
+),
+ranked AS (
+  SELECT s.*, RANK() OVER (PARTITION BY city ORDER BY total DESC) AS rk
+  FROM spend s
+)
+SELECT city, name, total
+FROM ranked
+WHERE rk = 1
+ORDER BY total DESC;
+```
+
+| city | name | total |
+| --- | --- | --- |
+| ঢাকা | মাহি | 2220.00 |
+| চট্টগ্রাম | ইশরাত | 2200.00 |
+| সিলেট | সৌরভ | 350.00 |
+</Solution>
+</Challenge>
+
+<Challenge id="12" tier="hard" title="চলমান স্কোর">
+প্রতিটা দলের প্রতিটা ইনিংসের পাশে সেই দলের এ পর্যন্ত মোট স্কোর (চলমান যোগফল)।
+
+<Solution title="ইঙ্গিত ১">
+প্রতিটা দলে গোনা আলাদা, তাই `PARTITION BY team_id`; চলমান, তাই `ORDER BY played_on`।
+</Solution>
+<Solution>
+```sql
+SELECT t.name, i.played_on, i.score,
+       SUM(i.score) OVER (PARTITION BY i.team_id ORDER BY i.played_on) AS running
+FROM innings i
+JOIN team t ON t.id = i.team_id
+ORDER BY i.team_id, i.played_on;
+```
+
+| name | played_on | score | running |
+| --- | --- | --- | --- |
+| পদ্মা টাইগার্স | 2025-03-01 | 165 | 165 |
+| পদ্মা টাইগার্স | 2025-03-08 | 142 | 307 |
+| পদ্মা টাইগার্স | 2025-03-15 | 188 | 495 |
+| মেঘনা কিংস | 2025-03-01 | 171 | 171 |
+| মেঘনা কিংস | 2025-03-08 | 199 | 370 |
+| মেঘনা কিংস | 2025-03-15 | 150 | 520 |
+| যমুনা স্টারস | 2025-03-08 | 120 | 120 |
+| যমুনা স্টারস | 2025-03-15 | 177 | 297 |
+
+সতর্কতা: একই দলের একই দিনে দুটো ইনিংস থাকলে `ORDER BY played_on`-এ দুটোই সমান, আর ডিফল্ট Frame (`RANGE`) দুটোকে একসাথে যোগ করে ফেলবে। তখন `ORDER BY played_on, id` দাও।
+</Solution>
+</Challenge>
+
+<Challenge id="13" tier="hard" title="সর্বোচ্চ, সর্বনিম্ন, গড়">
+`runs_extremes` নামে একটা View বানাও: যে খেলোয়াড়দের রান লিগের সর্বোচ্চ, সর্বনিম্ন **বা** গড় রানের সমান।
+
+<Solution title="ইঙ্গিত ১">
+তিনটা আলাদা Subquery, `OR` দিয়ে জোড়া। গড়ের সমান কেউ আসবে কি না, আগে `SELECT AVG(runs) FROM player` চালিয়ে দেখো।
+</Solution>
+<Solution>
+```sql
+CREATE OR REPLACE VIEW runs_extremes AS
+SELECT name, runs
+FROM player
+WHERE runs = (SELECT MAX(runs) FROM player)
+   OR runs = (SELECT MIN(runs) FROM player)
+   OR runs = (SELECT AVG(runs) FROM player);
+
+SELECT * FROM runs_extremes;
+```
+
+| name | runs |
+| --- | --- |
+| ফাহিম | 45 |
+| রিফাত | 512 |
+| অপু | 250 |
+| সিয়াম | 45 |
+
+এবার গড় ঠিক `250.0000` (৮ জনের মোট ২০০০), তাই অপু এসেছে; লেভেল ৪.৪-এর স্কুলের ডেটায় এমন হয়নি। আর সর্বনিম্নে দুজন সমান (৪৫), দুজনই আছে।
+</Solution>
+</Challenge>
+
+## স্তর ৪: বস
+
+<Challenge id="14" tier="boss" title="কর্মীদের পুরো শিকল">
+প্রতিটা কর্মীর জন্য: নাম, প্রধানের (করিম) থেকে কত ধাপ নিচে (করিম নিজে ০), আর প্রধান থেকে তাঁর পর্যন্ত পুরো পথ (`করিম → সুমি → পলাশ`)। পথ অনুযায়ী সাজাও।
+
+<Solution title="ইঙ্গিত ১">
+কয় স্তর আছে আগে থেকে জানা নেই, তাই Self Join না: Recursive CTE (লেভেল ৪.৩)। ভিত্তি অংশ `manager_id IS NULL`।
+</Solution>
+<Solution title="ইঙ্গিত ২">
+`path` Column চওড়া হবে; ভিত্তি অংশে `CAST(name AS CHAR(200))`, নাহলে `ERROR 1406`।
+</Solution>
+<Solution>
+```sql
+WITH RECURSIVE chain AS (
+  SELECT id, name, manager_id, 0 AS level, CAST(name AS CHAR(200)) AS path
+  FROM employee
+  WHERE manager_id IS NULL
+  UNION ALL
+  SELECT e.id, e.name, e.manager_id, c.level + 1, CONCAT(c.path, ' → ', e.name)
+  FROM employee e
+  JOIN chain c ON e.manager_id = c.id
+)
+SELECT name, level, path
+FROM chain
+ORDER BY path;
+```
+
+| name | level | path |
+| --- | --- | --- |
+| করিম | 0 | করিম |
+| জামিল | 1 | করিম → জামিল |
+| মিতু | 2 | করিম → জামিল → মিতু |
+| রনি | 2 | করিম → জামিল → রনি |
+| ঝুমা | 1 | করিম → ঝুমা |
+| শাওন | 1 | করিম → শাওন |
+| সুমি | 1 | করিম → সুমি |
+| আসিফ | 2 | করিম → সুমি → আসিফ |
+| নীলা | 2 | করিম → সুমি → নীলা |
+| পলাশ | 2 | করিম → সুমি → পলাশ |
+</Solution>
+</Challenge>
+
+<Challenge id="15" tier="boss" title="মাসে মাসে খরচের ওঠানামা">
+২০২৫ সালে প্রত্যেক ক্রেতা প্রতি মাসে কত খরচ করেছেন, আর তাঁর **আগের কেনাকাটার মাসের** তুলনায় কত বেড়েছে বা কমেছে।
+
+<Solution title="ইঙ্গিত ১">
+আগে একটা CTE-তে ক্রেতা আর মাস অনুযায়ী `GROUP BY` (মাস: `DATE_FORMAT(purchased_on, '%Y-%m')`)।
+</Solution>
+<Solution title="ইঙ্গিত ২">
+তারপর বাইরে `LAG(spent) OVER (PARTITION BY name ORDER BY month)`। মাঝখানে কোনো মাসে না কিনলে, `LAG` সেই ফাঁকা মাস নয়, আগের কেনাকাটার মাসটাই দেয়।
+</Solution>
+<Solution>
+```sql
+WITH monthly AS (
+  SELECT c.name, DATE_FORMAT(p.purchased_on, '%Y-%m') AS month,
+         SUM(p.qty * b.price) AS spent
+  FROM customer c
+  JOIN purchase p ON p.customer_id = c.id
+  JOIN book b     ON b.id = p.book_id
+  WHERE p.purchased_on >= '2025-01-01' AND p.purchased_on < '2026-01-01'
+  GROUP BY c.id, c.name, month
+)
+SELECT name, month, spent,
+       spent - LAG(spent) OVER (PARTITION BY name ORDER BY month) AS change_amt
+FROM monthly
+ORDER BY name, month;
+```
+
+| name | month | spent | change_amt |
+| --- | --- | --- | --- |
+| ইশরাত | 2025-01 | 1600.00 | NULL |
+| ইশরাত | 2025-02 | 600.00 | -1000.00 |
+| তানহা | 2025-04 | 350.00 | NULL |
+| মাহি | 2025-03 | 1420.00 | NULL |
+| মাহি | 2025-05 | 800.00 | -620.00 |
+| রাহাত | 2025-01 | 450.00 | NULL |
+| রাহাত | 2025-02 | 800.00 | 350.00 |
+| রাহাত | 2025-04 | 600.00 | -200.00 |
+
+রাহাতের এপ্রিলের তুলনা হয়েছে ফেব্রুয়ারির সাথে, মার্চের সাথে না (মার্চে সে কেনেনি)। "প্রতিটা ক্যালেন্ডার মাস" ধরে তুলনা চাইলে আগে লেভেল ৪.৩-এর মতো Recursive CTE দিয়ে মাসের তালিকা বানিয়ে `LEFT JOIN` করতে হবে।
+</Solution>
+</Challenge>
+
+<Challenge id="16" tier="boss" title="শাখার রিপোর্ট কার্ড">
+প্রতিটা শাখার জন্য এক লাইনে: এলাকা, কর্মীর সংখ্যা, মোট বেতন, আর সবচেয়ে বেশি বেতনের কর্মীর নাম। কর্মী নেই এমন শাখাও থাকবে (কর্মী ০, বেতন ০)। মোট বেতন অনুযায়ী সাজাও।
+
+<Solution title="ইঙ্গিত ১">
+"কর্মী নেই এমন শাখাও" = `outlet` থেকে `LEFT JOIN`। মোট বেতন `NULL` না হয়ে ০ হবে: `COALESCE`।
+</Solution>
+<Solution title="ইঙ্গিত ২">
+সবচেয়ে বেশি বেতনের **নাম**: `MAX(e.name)` লিখলে বর্ণক্রমে শেষ নামটা আসে, বেতনে সর্বোচ্চ জন না! আলাদা একটা ধাপে (CTE + `ROW_NUMBER`) শাখার সেরা জনকে বের করে `LEFT JOIN` করো।
+</Solution>
+<Solution>
+```sql
+WITH top_paid AS (
+  SELECT outlet_id, name
+  FROM (
+    SELECT outlet_id, name,
+           ROW_NUMBER() OVER (PARTITION BY outlet_id ORDER BY salary DESC, id) AS rn
+    FROM employee
+  ) x
+  WHERE rn = 1
+)
+SELECT o.area,
+       COUNT(e.id) AS staff,
+       COALESCE(SUM(e.salary), 0) AS payroll,
+       tp.name AS top_earner
+FROM outlet o
+LEFT JOIN employee e  ON e.outlet_id = o.id
+LEFT JOIN top_paid tp ON tp.outlet_id = o.id
+GROUP BY o.id, o.area, tp.name
+ORDER BY payroll DESC;
+```
+
+| area | staff | payroll | top_earner |
+| --- | --- | --- | --- |
+| ধানমন্ডি | 4 | 145000.00 | সুমি |
+| গুলশান | 2 | 130000.00 | করিম |
+| বনানী | 3 | 116000.00 | জামিল |
+| উত্তরা | 1 | 45000.00 | ঝুমা |
+| মিরপুর | 0 | 0.00 | NULL |
+
+ইঙ্গিত ২-এর ফাঁদে পড়লে গুলশানে আসত শাওন (বর্ণক্রমে করিমের পরে), যদিও বেতন বেশি করিমের। পুরো বইয়ের অস্ত্র এক Query-তে: `LEFT JOIN`, `COUNT(col)`, `COALESCE`, CTE, Window আর `GROUP BY`। এটা নিজে পারলে তুমি তৈরি।
+</Solution>
+</Challenge>
+
+<Success title="অ্যারেনা জয়!">
+১৬টা প্রশ্নের প্রতিটা নিজে পারলে, পরীক্ষা বা ইন্টারভিউয়ের বেশিরভাগ SQL প্রশ্ন আর অচেনা লাগবে না: সেগুলো এই নকশাগুলোরই নতুন সাজ। এবার [রিভিশন পাতা](/revision) আর [চিট শিট](/cheatsheet) হাতের কাছে রেখে ফাইনাল বসের দিকে এগোও।
+</Success>
+
+<Summary slug="level-4-5" />
+
+<Checkpoint questions={[
+  { q: "SELECT DISTINCT name ... ORDER BY id কেন ERROR 3065 দেয়?", options: ["DISTINCT ধীর", "ORDER BY-এর Column SELECT-এ নেই; DISTINCT-এ একই নামের একাধিক id থাকলে কোনটা দিয়ে সাজাবে ঠিক থাকে না", "id সাজানো যায় না", "MySQL-এ DISTINCT নেই"], answer: 1, why: "GROUP BY id, name দিয়ে সমাধান, বা সাজানোর Column-টাও SELECT-এ নাও।" },
+  { q: "\"২০২২-এর পরে যোগ দিয়েছে\" কোন শর্ত?", options: ["join_date > '2022-01-01'", "join_date > '2022-12-31'", "join_date >= '2022-01-01'", "YEAR(join_date) = 2022"], answer: 1, why: "২০২২ সালটা নিজেও বাদ; প্রথম শর্তে নভেম্বর ২০২২ ঢুকে যায়।" },
+  { q: "দুটো বইয়ের দাম সমান সর্বোচ্চ। \"সবচেয়ে দামি বইয়ের ক্রেতা\" খুঁজতে কোনটা নিরাপদ?", options: ["ORDER BY price DESC LIMIT 1", "WHERE price = (SELECT MAX(price) FROM book)", "MAX(price) GROUP BY", "TOP 1"], answer: 1, why: "LIMIT 1 সমান মানের একটাকে চুপচাপ বাদ দেয়।" },
+  { q: "শাখার সর্বোচ্চ বেতনের কর্মীর নাম পেতে MAX(name) কেন ভুল?", options: ["MAX লেখায় চলে না", "MAX(name) বর্ণক্রমে শেষ নাম দেয়, বেতনের সাথে সম্পর্ক নেই", "Error দেয়", "NULL দেয়"], answer: 1, why: "ROW_NUMBER() OVER (PARTITION BY outlet_id ORDER BY salary DESC) দিয়ে আলাদা ধাপে বের করো।" },
+  { q: "রিয়াজের প্রতিটা প্রোগ্রামে ভর্তি সদস্য খুঁজতে কোন নকশা?", options: ["অন্তত একটা (JOIN)", "Relational Division (দুইবার NOT EXISTS বা COUNT মেলানো)", "Pivot", "ROLLUP"], answer: 1, why: "\"প্রতিটা\" শব্দ দেখলেই Division।" }
+]} />

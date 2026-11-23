@@ -1,0 +1,271 @@
+<Story title="রাজধানীতে স্বাগতম">
+এতদিন তুমি Database চালাতে শিখেছ। রাজধানীতে শিখবে Database **ভাবতে**: কেন এভাবে বানানো, কোন ডিজাইন ভালো, কোনটা দ্রুত, কোনটা নিরাপদ। ইউনিভার্সিটির DBMS কোর্সের মূল অংশ এই জোনেই। প্রথম লেভেলে আমরা SQL-এর নিচের গণিতটা দেখব, যেটা ১৯৭০ সালে IBM-এর গবেষক Edgar F. Codd প্রস্তাব করেছিলেন: **Relational Model**।
+</Story>
+
+<Mission>
+- Relational Model-এর পরিভাষা: Relation, Tuple, Attribute, Domain, Degree, Cardinality
+- Key-এর পরিবার: Super Key, Candidate Key, Primary Key, Alternate Key, Foreign Key, Composite Key
+- **Relational Algebra**-র মূল অপারেটর (σ, π, ⋈, ∪, −, ×, ρ) আর প্রতিটার SQL রূপ
+</Mission>
+
+## টেবিলের "আসল" নাম
+
+| দৈনন্দিন নাম | Relational Model-এর নাম | উদাহরণ |
+| --- | --- | --- |
+| Table | **Relation** | `students` |
+| Row | **Tuple** | রাফির পুরো লাইন |
+| Column | **Attribute** | `city` |
+| একটা Column-এর সম্ভাব্য সব মান | **Domain** | `class`-এর Domain: ৬ থেকে ১০ |
+| Column-এর সংখ্যা | **Degree** | `students`-এর Degree ৯ |
+| Row-এর সংখ্যা | **Cardinality** | `students`-এর Cardinality ১০ |
+| টেবিলের গঠন | **Relation Schema** | `students(id, name, roll, ...)` |
+| কোনো মুহূর্তের ডেটা | **Relation Instance** | এই মুহূর্তের ১০টা Row |
+
+তত্ত্বে একটা Relation হলো Tuple-এর একটা **সেট** (Set)। গণিতের সেটের দুটো বৈশিষ্ট্য এখান থেকেই আসে:
+
+1. **কোনো ডুপ্লিকেট Tuple থাকে না।** তাই প্রতিটা Relation-এ একটা Key থাকতেই হয়।
+2. **Tuple-এর কোনো ক্রম নেই।** এ কারণেই লেভেল ৩-এ বলেছিলাম, `ORDER BY` ছাড়া ক্রমের কোনো নিশ্চয়তা নেই।
+
+<Note title="তত্ত্ব বনাম বাস্তব">
+আসল SQL তত্ত্ব থেকে একটু সরে গেছে: Primary Key ছাড়া টেবিল বানালে MySQL-এ ডুপ্লিকেট Row রাখা যায়, আর `SELECT` ডুপ্লিকেট ফেরত দিতে পারে (সেজন্যই `DISTINCT` লাগে)। তাই বলা হয়, SQL টেবিল আসলে Set না, **Bag** (বা Multiset)।
+</Note>
+
+আরেকটা নিয়ম: প্রতিটা ঘরে **একটাই, অবিভাজ্য (Atomic) মান**। একজন ছাত্রের দুটো ফোন নম্বর এক ঘরে কমা দিয়ে লেখা চলবে না। লেভেল ১৫-এ এটাই হবে First Normal Form।
+
+## Key-এর পরিবার
+
+`students` টেবিল দিয়ে বুঝি। কোন কোন Attribute (বা তাদের মিশ্রণ) দিয়ে প্রতিটা ছাত্রকে আলাদা করে চেনা যায়?
+
+### Super Key
+
+যে Attribute-এর সেট দিয়ে প্রতিটা Tuple **অনন্যভাবে** চেনা যায়, সেটাই Super Key। এতে বাড়তি Attribute থাকলেও সমস্যা নেই:
+
+- `{id}` ✅
+- `{id, name}` ✅ (`id` একাই যথেষ্ট, `name` বাড়তি)
+- `{phone}` ❌ (কয়েকজনের `NULL`)
+- `{class, section, roll}` ✅ (লেভেল ৯-এ `UNIQUE` দিয়েছিলাম)
+- `{class, section, roll, city}` ✅ (বাড়তি `city` সহ)
+- `{name}` ❌ (দুজন "রাফি" থাকতেই পারে)
+
+### Candidate Key
+
+**ন্যূনতম** Super Key: যেখান থেকে কোনো Attribute সরালেই অনন্যতা হারায়।
+
+- `{id}` ✅ (এক Attribute, সরানোর কিছু নেই)
+- `{class, section, roll}` ✅ (`roll` সরালে ৮-A-র সবাই এক; `section` সরালে ৮-A আর ৮-B-র রোল ১ এক)
+- `{id, name}` ❌ (`name` সরালেও `{id}` অনন্য, তাই ন্যূনতম না)
+
+### Primary Key আর Alternate Key
+
+Candidate Key-গুলোর মধ্যে যেটাকে আমরা **বেছে নিই** প্রধান পরিচয় হিসেবে, সেটা **Primary Key** (`id`)। বাকি Candidate Key-রা **Alternate Key** (`{class, section, roll}`)। SQL-এ Alternate Key সাধারণত `UNIQUE` দিয়ে প্রয়োগ করা হয়।
+
+```text
+সব Attribute-এর সেট
+ └── Super Key (অনন্য, বাড়তি থাকতে পারে)
+      └── Candidate Key (ন্যূনতম Super Key)
+           ├── Primary Key (বেছে নেওয়া একটা)
+           └── Alternate Key (বাকিরা)
+```
+
+### আরও কয়েকটা
+
+| নাম | মানে | উদাহরণ |
+| --- | --- | --- |
+| **Composite Key** | একাধিক Attribute মিলে Key | `marks(student_id, subject_id)` |
+| **Foreign Key** | অন্য Relation-এর Key-এর দিকে নির্দেশ | `marks.student_id` → `students.id` |
+| **Natural Key** | বাস্তব জগতের অর্থবহ Key | NID নম্বর, ISBN |
+| **Surrogate Key** | কৃত্রিম, অর্থহীন Key | `AUTO_INCREMENT`-এর `id` |
+
+<Tip title="Natural নাকি Surrogate?">
+বাস্তবে বেশির ভাগ সময় **Surrogate Key** (`id INT AUTO_INCREMENT`) ভালো, কারণ বাস্তব জগতের "অনন্য" জিনিসও বদলায় বা ভুল হয়: ফোন নম্বর বদলায়, NID-তে টাইপো হয়, কারো NID থাকেই না। তবে Natural Key-টাও `UNIQUE` দিয়ে পাহারা দাও, যাতে একই মানুষ দুবার না ঢোকে।
+</Tip>
+
+### Integrity Constraint-এর তত্ত্বীয় নাম
+
+- **Entity Integrity**: Primary Key কখনো `NULL` হবে না।
+- **Referential Integrity**: Foreign Key-র মান হয় `NULL`, নয়তো Parent-এ সত্যিই আছে এমন কোনো মান।
+- **Domain Integrity**: প্রতিটা মান তার Domain-এর ভেতরে (Data Type, `CHECK`)।
+
+লেভেল ৯-এ যা প্রয়োগ করেছিলে, এগুলো তার তাত্ত্বিক নাম।
+
+## Relational Algebra: Query-র গণিত
+
+Relational Algebra হলো কয়েকটা অপারেটর, যারা Relation নেয় আর নতুন Relation ফেরত দেয়। SQL লেখার সময় MySQL ভেতরে ভেতরে তোমার Query-কে এরকম অপারেটরের একটা গাছে ভাঙে, তারপর ঠিক করে কোনটা আগে চালালে দ্রুত হবে। ইউনির পরীক্ষায় এগুলো প্রায় নিশ্চিত প্রশ্ন।
+
+### σ (Sigma): Selection, Row ছাঁকা
+
+**σ** <sub>শর্ত</sub>(R) → `WHERE`
+
+σ <sub>city = 'ঢাকা'</sub>(students)
+
+```sql
+SELECT * FROM students WHERE city = 'ঢাকা';
+```
+
+নাম `SELECT`-এর মতো শোনালেও Selection আসলে `WHERE`! এটা একটা চিরাচরিত পরীক্ষার ফাঁদ।
+
+### π (Pi): Projection, Column বাছা
+
+**π** <sub>Attribute-এর তালিকা</sub>(R) → `SELECT DISTINCT কলাম`
+
+π <sub>name, city</sub>(students)
+
+```sql
+SELECT DISTINCT name, city FROM students;
+```
+
+`DISTINCT` কেন? কারণ Relation একটা সেট, তত্ত্বে ডুপ্লিকেট থাকতে পারে না।
+
+### মিলিয়ে লেখা
+
+"ঢাকার ছাত্রদের নাম" = π <sub>name</sub>(σ <sub>city = 'ঢাকা'</sub>(students))
+
+ভেতর থেকে বাইরে পড়ো: আগে ঢাকার Row ছাঁকো (σ), তারপর শুধু নাম রাখো (π)।
+
+### × : Cartesian Product
+
+students × subjects → `CROSS JOIN` (১০ × ৪ = ৪০টা Tuple)
+
+### ⋈ : Join
+
+students ⋈ <sub>students.id = marks.student_id</sub> marks → `INNER JOIN ... ON`
+
+Join আসলে Product-এর পরে Selection: R ⋈ <sub>শর্ত</sub> S = σ <sub>শর্ত</sub>(R × S)। তাই লেভেল ১০-এ বলেছিলাম, `ON` ভুলে গেলে Product (বিশাল ফলাফল) পাওয়া যায়।
+
+**Natural Join** (R ⋈ S, কোনো শর্ত লেখা ছাড়া) একই নামের সব Column দিয়ে স্বয়ংক্রিয়ভাবে মেলায়। MySQL-এ `NATURAL JOIN` আছে, কিন্তু বিপজ্জনক: আমাদের টেবিলগুলোতে `id` আর `name` দুটোই সাধারণ নাম, তাই `students NATURAL JOIN teachers` ছাত্র আর শিক্ষকের `id` **এবং** `name` মিলিয়ে অর্থহীন ফলাফল দেবে।
+
+### ∪, ∩, − : সেটের অপারেটর
+
+| অপারেটর | মানে | SQL (MySQL 8) |
+| --- | --- | --- |
+| R ∪ S | দুটোর যেকোনোটায় আছে | `UNION` |
+| R ∩ S | দুটোতেই আছে | `INTERSECT` (MySQL 8.0.31+), বা `IN`/`EXISTS` |
+| R − S | R-এ আছে, S-এ নেই | `EXCEPT` (MySQL 8.0.31+), বা `NOT EXISTS` |
+
+শর্ত: দুই Relation-এর Attribute সংখ্যা আর Domain মিলতে হবে (**Union Compatible**)।
+
+```sql
+-- ক্লাস ৮-এ আছে কিন্তু ক্লাস ৯-এ নেই এমন শহর (R − S)
+SELECT city FROM students WHERE class = 8
+EXCEPT
+SELECT city FROM students WHERE class = 9;
+```
+
+পুরোনো MySQL বা MariaDB 10.3-এর আগের সংস্করণে `EXCEPT` না চললে:
+
+```sql
+SELECT DISTINCT s.city FROM students s
+WHERE s.class = 8
+  AND NOT EXISTS (SELECT 1 FROM students x WHERE x.class = 9 AND x.city = s.city);
+```
+
+উত্তর: বরিশাল আর চট্টগ্রাম (ঢাকা দুই ক্লাসেই আছে)।
+
+### ρ (Rho): Rename
+
+ρ <sub>h</sub>(teachers) → Alias: `FROM teachers h`। লেভেল ১১-এর Self Join ঠিক এটাই করেছিল।
+
+### সারাংশ
+
+| প্রতীক | নাম | SQL |
+| --- | --- | --- |
+| σ | Selection | `WHERE` |
+| π | Projection | `SELECT DISTINCT ...` |
+| × | Cartesian Product | `CROSS JOIN` |
+| ⋈ | Join | `JOIN ... ON` |
+| ∪ | Union | `UNION` |
+| ∩ | Intersection | `INTERSECT` |
+| − | Difference | `EXCEPT` / `NOT EXISTS` |
+| ρ | Rename | `AS` |
+
+<Remember>
+**Selection (σ) = Row ছাঁকা = `WHERE`। Projection (π) = Column বাছা = `SELECT`।** নামের মিলে বিভ্রান্ত হয়ো না। পরীক্ষায় প্রশ্ন সাধারণত দুই রকম আসে: SQL দিয়ে Algebra লেখো, বা Algebra দিয়ে SQL লেখো। দুটোর ক্ষেত্রেই ভেতর থেকে বাইরে চিন্তা করো।
+</Remember>
+
+<BugMonster title="তত্ত্বের ধাঁধা">
+
+**১. Super আর Candidate Key গুলিয়ে ফেলা।** প্রতিটা Candidate Key একটা Super Key, কিন্তু উল্টোটা না। Candidate = "ন্যূনতম"।
+
+**২. "Primary Key একটাই Column" ভাবা।** Composite Primary Key পুরোপুরি বৈধ (`marks`)।
+
+**৩. `NATURAL JOIN`-এর ফাঁদ।** একই নামের অপ্রাসঙ্গিক Column (`id`, `name`, `created_at`) দিয়েও মিলিয়ে ফেলে। বাস্তবে সবসময় `JOIN ... ON` লেখো।
+
+**৪. `EXCEPT`/`INTERSECT` পুরোনো সংস্করণে।** MySQL 8.0.31-এর আগে নেই; `NOT EXISTS`/`EXISTS` দিয়ে লেখো।
+
+</BugMonster>
+
+<Quest id="1" title="Key খোঁজো">
+`marks(student_id, subject_id, score)` Relation-এর সব Candidate Key কী? আর তিনটা Super Key লেখো।
+
+<Solution>
+Candidate Key একটাই: `{student_id, subject_id}`। Super Key: `{student_id, subject_id}`, `{student_id, subject_id, score}`। আর...? এই দুটোই আছে, কারণ Attribute মাত্র তিনটা আর `score` একা বা কোনো একক id দিয়ে অনন্যতা আসে না। তাই "তিনটা Super Key" চাওয়াটাই ছিল ফাঁদ! প্রশ্ন নিজেও যাচাই করতে শেখো।
+</Solution>
+</Quest>
+
+<Quest id="2" title="Algebra থেকে SQL">
+SQL-এ লেখো: π <sub>name, score</sub>(σ <sub>score ≥ 90</sub>(students ⋈ <sub>students.id = marks.student_id</sub> marks))
+
+<Solution>
+```sql
+SELECT DISTINCT s.name, m.score
+FROM students s
+JOIN marks m ON s.id = m.student_id
+WHERE m.score >= 90;
+```
+</Solution>
+</Quest>
+
+<Quest id="3" title="SQL থেকে Algebra">
+এই Query-কে Relational Algebra-য় লেখো:
+
+```sql
+SELECT DISTINCT t.name
+FROM teachers t
+JOIN subjects sub ON sub.teacher_id = t.id
+WHERE sub.name = 'বাংলা';
+```
+
+<Solution>
+π <sub>teachers.name</sub>(σ <sub>subjects.name = 'বাংলা'</sub>(teachers ⋈ <sub>teachers.id = subjects.teacher_id</sub> subjects))
+
+আরও দক্ষ রূপ: আগে বিষয় ছেঁকে নিয়ে তারপর জোড়া, π <sub>teachers.name</sub>(teachers ⋈ <sub>teachers.id = teacher_id</sub> σ <sub>name = 'বাংলা'</sub>(subjects))। দুটোর উত্তর একই, কিন্তু দ্বিতীয়টায় Join হয় মাত্র একটা Row-এর সাথে। MySQL-এর Query Optimizer ঠিক এই ধরনের পুনর্বিন্যাস করে, একে বলে **Selection Pushdown**।
+</Solution>
+</Quest>
+
+<Boss title="ভাইভা বোর্ড">
+তুমি ভাইভা দিচ্ছ। পরীক্ষক `library` Database-এর `loans(id, book_id, member_id, borrowed_on, due_on, returned_on)` দেখিয়ে তিনটা প্রশ্ন করলেন:
+
+1. এর Degree কত? এর Candidate Key কী কী, যদি নিয়ম থাকে "একজন সদস্য একই দিনে একই বই একবারই নিতে পারে"?
+2. "যে সদস্যরা কখনো বই নেয়নি" Relational Algebra-য় লেখো।
+3. `σ` আর `π`-এর ক্রম বদলালে কি সবসময় একই উত্তর আসে?
+
+<Solution title="ইঙ্গিত ১">
+Degree মানে Attribute-এর সংখ্যা। Candidate Key: এমন সবচেয়ে ছোট Attribute-সেট, যা দিয়ে প্রতিটা Tuple আলাদা চেনা যায়। নিয়মটা কোন তিনটা Attribute মিলে অনন্য হওয়ার কথা বলছে?
+</Solution>
+
+<Solution title="ইঙ্গিত ২">
+"কখনো নেয়নি" = সব সদস্য বিয়োগ (−) যারা নিয়েছে। আর `σ`, `π`-এর ক্রম নিয়ে ভাবো: আগে `π` করলে যদি `σ`-এর শর্তের Column-টাই বাদ পড়ে যায়?
+</Solution>
+
+<Solution>
+**১.** Degree = ৬। Candidate Key: `{id}` আর `{book_id, member_id, borrowed_on}`। Primary Key `id`, অন্যটা Alternate Key, যেটা `UNIQUE (book_id, member_id, borrowed_on)` দিয়ে প্রয়োগ করা উচিত।
+
+**২.** সব সদস্যের id থেকে যারা নিয়েছে তাদের id বাদ:
+
+π <sub>id</sub>(members) − ρ <sub>id</sub>(π <sub>member_id</sub>(loans))
+
+তারপর নাম আনতে আবার members-এর সাথে Join। SQL-এ এটাই `NOT EXISTS` বা `EXCEPT`।
+
+**৩.** না। σ যদি এমন Attribute-এ শর্ত দেয় যেটা π বাদ দিয়ে দিয়েছে, তাহলে আগে π চালালে σ-এর আর সেই Attribute-ই থাকে না। যেমন π <sub>name</sub>(σ <sub>city='ঢাকা'</sub>(students)) বৈধ, কিন্তু σ <sub>city='ঢাকা'</sub>(π <sub>name</sub>(students)) অবৈধ, কারণ `city` আর নেই। ক্রম বদলানো যায় তখনই, যখন শর্তের সব Attribute Projection-এর তালিকায় থাকে।
+</Solution>
+</Boss>
+
+<Summary slug="level-13" />
+
+<Checkpoint questions={[
+  { q: "Relational Model-এ Row-এর নাম কী?", options: ["Attribute", "Tuple", "Domain", "Degree"], answer: 1, why: "Row = Tuple, Column = Attribute, Table = Relation।" },
+  { q: "Candidate Key কী?", options: ["যেকোনো UNIQUE Column", "ন্যূনতম Super Key", "Foreign Key", "সব Column একসাথে"], answer: 1, why: "অনন্যতা দেয় আর কোনো Attribute সরানো যায় না, এমন Super Key।" },
+  { q: "Relational Algebra-র Selection (σ) SQL-এর কোনটা?", options: ["SELECT", "WHERE", "FROM", "ORDER BY"], answer: 1, why: "Selection Row ছাঁকে = WHERE। Column বাছা হলো Projection (π)।" },
+  { q: "students-এর ১০টা আর subjects-এর ৪টা Tuple। students × subjects-এ কয়টা?", options: ["14", "40", "10", "4"], answer: 1, why: "Cartesian Product: ১০ × ৪।" },
+  { q: "Primary Key কখনো NULL হতে পারবে না — এই নিয়মের নাম?", options: ["Referential Integrity", "Entity Integrity", "Domain Integrity", "Normalization"], answer: 1, why: "Entity Integrity নিশ্চিত করে প্রতিটা Tuple চেনা যায়।" }
+]} />

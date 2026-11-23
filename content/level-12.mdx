@@ -1,0 +1,388 @@
+<Mission>
+- **Subquery**: একটা Query-র ভেতরে আরেকটা Query
+- তিন রকম Subquery: একটা মান দেয়, একটা তালিকা দেয়, পুরো একটা টেবিল দেয়
+- **Correlated Subquery**: ভেতরের Query বাইরের প্রতিটা Row-এর জন্য আলাদা করে চলে
+- `EXISTS` / `NOT EXISTS`, আর `NOT IN`-এর ভয়ংকর `NULL` ফাঁদ
+- `UNION` আর `UNION ALL` দিয়ে দুই Query-র ফলাফল একসাথে
+</Mission>
+
+লেভেল ৭-এ একটা প্রশ্নের উত্তর অসম্পূর্ণ রেখেছিলাম: "যাদের GPA গড়ের বেশি, তারা কারা?" `WHERE gpa > AVG(gpa)` চলে না। কিন্তু প্রশ্নটা দুই ধাপে ভাঙা যায়: (১) গড় কত? (২) কারা তার বেশি? প্রথম প্রশ্নের Query-টা দ্বিতীয়টার ভেতরে বসিয়ে দিলেই হলো।
+
+<Note title="শুরুর আগে">
+জোন ২-এর খাতা লাগবে ([school-zone2.sql](/sql/school-zone2.sql))।
+</Note>
+
+## একটা মান দেয় এমন Subquery (Scalar)
+
+```sql
+SELECT name, gpa
+FROM students
+WHERE gpa > (SELECT AVG(gpa) FROM students)
+ORDER BY gpa DESC;
+```
+
+| name | gpa |
+| --- | --- |
+| নুসরাত | 5.00 |
+| লামিয়া | 4.95 |
+| সাদিয়া | 4.80 |
+| রাফি | 4.50 |
+| মীম | 4.25 |
+
+MySQL আগে বন্ধনীর ভেতরেরটা চালায় (উত্তর 4.183...), তারপর সেই সংখ্যা বসিয়ে বাইরেরটা। `SELECT`-এর ভেতরেও বসানো যায়:
+
+```sql
+SELECT name, gpa,
+       (SELECT ROUND(AVG(gpa), 2) FROM students) AS school_avg,
+       ROUND(gpa - (SELECT AVG(gpa) FROM students), 2) AS diff
+FROM students
+WHERE class = 9;
+```
+
+| name | gpa | school_avg | diff |
+| --- | --- | --- | --- |
+| মীম | 4.25 | 4.18 | 0.07 |
+| সাদিয়া | 4.80 | 4.18 | 0.62 |
+| আরিফ | 2.90 | 4.18 | -1.28 |
+
+এমন Subquery-কে অবশ্যই **একটাই মান** (এক Row, এক Column) দিতে হবে; বেশি দিলে error: `Subquery returns more than 1 row`।
+
+## তালিকা দেয় এমন Subquery: IN
+
+কোনো বিষয়ে ৬০-এর কম পেয়েছে, এমন ছাত্রদের নাম:
+
+```sql
+SELECT name
+FROM students
+WHERE id IN (SELECT student_id FROM marks WHERE score < 60);
+```
+
+| name |
+| --- |
+| আরিফ |
+
+আরিফ দুটো বিষয়ে কম পেয়েছে, তবু নাম একবারই এসেছে। একই জিনিস JOIN দিয়ে লিখলে `DISTINCT` লাগত। এটা Subquery-র একটা সুবিধা: "আছে কি না" প্রশ্নে ডুপ্লিকেট আসে না।
+
+## টেবিল দেয় এমন Subquery: Derived Table
+
+প্রতিটা ছাত্রের মোট নম্বর বের করে, তারপর সেই মোটগুলোর গড়:
+
+```sql
+SELECT ROUND(AVG(total), 1) AS avg_total
+FROM (
+  SELECT student_id, SUM(score) AS total
+  FROM marks
+  GROUP BY student_id
+) AS totals;
+```
+
+| avg_total |
+| --- |
+| 230.4 |
+
+`FROM`-এর ভেতরের Subquery একটা অস্থায়ী টেবিলের মতো কাজ করে। একে **Derived Table** বলে, আর MySQL-এ এর **একটা Alias দিতেই হবে** (`AS totals`), নাহলে error: `Every derived table must have its own alias`।
+
+## Correlated Subquery: প্রতিটা Row-এর জন্য আলাদা প্রশ্ন
+
+প্রতিটা ক্লাসের সর্বোচ্চ GPA-ধারী:
+
+```sql
+SELECT s.name, s.class, s.gpa
+FROM students s
+WHERE s.gpa = (
+  SELECT MAX(s2.gpa)
+  FROM students s2
+  WHERE s2.class = s.class     -- বাইরের s-এর দিকে তাকাচ্ছে!
+)
+ORDER BY s.class;
+```
+
+| name | class | gpa |
+| --- | --- | --- |
+| নুসরাত | 8 | 5.00 |
+| সাদিয়া | 9 | 4.80 |
+| ইমরান | 10 | 4.00 |
+
+ভেতরের Query বাইরের `s.class` ব্যবহার করছে, তাই সেটা একবার না, **বাইরের প্রতিটা Row-এর জন্য একবার** চলে: "রাফির ক্লাসের সর্বোচ্চ কত? নুসরাতের ক্লাসের? ..."। সমান নম্বরে দুজন সেরা থাকলে দুজনই আসবে, যেটা `ORDER BY ... LIMIT 1` দিয়ে পাওয়া যায় না।
+
+একই কৌশলে প্রতিটা বিষয়ের টপার:
+
+```sql
+SELECT s.name, sub.name AS subject, m.score
+FROM marks m
+JOIN students s   ON s.id = m.student_id
+JOIN subjects sub ON sub.id = m.subject_id
+WHERE m.score = (SELECT MAX(m2.score) FROM marks m2 WHERE m2.subject_id = m.subject_id)
+ORDER BY sub.id;
+```
+
+| name | subject | score |
+| --- | --- | --- |
+| নুসরাত | গণিত | 98 |
+| লামিয়া | বাংলা | 97 |
+| নুসরাত | বিজ্ঞান | 95 |
+
+## EXISTS: অন্তত একটা আছে কি?
+
+```sql
+-- কোন শিক্ষকদের অন্তত একটা বিষয় আছে
+SELECT t.name
+FROM teachers t
+WHERE EXISTS (SELECT 1 FROM subjects sub WHERE sub.teacher_id = t.id);
+```
+
+| name |
+| --- |
+| হাসান স্যার |
+| রুমানা ম্যাডাম |
+| কামাল স্যার |
+
+`EXISTS` শুধু জানতে চায় "ভেতরের Query অন্তত একটা Row দেয় কি না"। কী দেয় তাতে কিছু যায় আসে না, তাই রীতি অনুযায়ী `SELECT 1` লেখা হয়। প্রথম মিল পাওয়ামাত্র থেমে যায়, তাই অনেক সময় দ্রুত।
+
+```sql
+-- কোন শিক্ষকের কোনো বিষয় নেই
+SELECT t.name
+FROM teachers t
+WHERE NOT EXISTS (SELECT 1 FROM subjects sub WHERE sub.teacher_id = t.id);
+```
+
+| name |
+| --- |
+| শারমিন ম্যাডাম |
+
+এটা লেভেল ১১-এর `LEFT JOIN ... IS NULL` Anti Join-এর আরেক রূপ।
+
+## NOT IN-এর NULL ফাঁদ (বাস্তব উদাহরণ)
+
+লেভেল ৪-এ সতর্ক করেছিলাম। এবার আসল জায়গায় দেখি। কোন শিক্ষক কারো বিভাগীয় প্রধান **নন**?
+
+```sql
+SELECT name FROM teachers
+WHERE id NOT IN (SELECT head_id FROM teachers);
+```
+
+ফলাফল: **একটাও Row নেই!** অথচ কামাল স্যার আর শারমিন ম্যাডাম কারো প্রধান নন। কারণ ভেতরের তালিকা হলো `(NULL, 1, 1, 2)`; হাসান স্যারের `head_id` `NULL`। আর "৩ কি NULL-এর সমান না?" এর উত্তর "জানা নেই", তাই কোনো Row-ই শর্ত পূরণ করে না।
+
+```sql
+-- ✅ NOT EXISTS-এ এই সমস্যা নেই
+SELECT name FROM teachers t
+WHERE NOT EXISTS (SELECT 1 FROM teachers x WHERE x.head_id = t.id);
+```
+
+| name |
+| --- |
+| কামাল স্যার |
+| শারমিন ম্যাডাম |
+
+<Remember>
+**Subquery-র তালিকায় `NULL` আসতে পারলে `NOT IN` কখনো ব্যবহার কোরো না; `NOT EXISTS` ব্যবহার করো।** অথবা ভেতরে `WHERE head_id IS NOT NULL` যোগ করো। এই বাগ সবচেয়ে বিপজ্জনক, কারণ কোনো error দেয় না, শুধু চুপচাপ ভুল (খালি) উত্তর দেয়।
+</Remember>
+
+## UNION: দুই ফলাফল একসাথে
+
+ঢাকার ছাত্র আর সব শিক্ষকের একটা যৌথ ফোনবুক:
+
+```sql
+SELECT name, 'ছাত্র' AS role, phone FROM students WHERE city = 'ঢাকা'
+UNION
+SELECT name, 'শিক্ষক', phone FROM teachers
+ORDER BY role, name;
+```
+
+| name | role | phone |
+| --- | --- | --- |
+| ইমরান | ছাত্র | NULL |
+| তানভীর | ছাত্র | NULL |
+| রাফি | ছাত্র | 01711000001 |
+| সাদিয়া | ছাত্র | 01611000006 |
+| কামাল স্যার | শিক্ষক | 01700000103 |
+| রুমানা ম্যাডাম | শিক্ষক | 01700000102 |
+| শারমিন ম্যাডাম | শিক্ষক | 01700000104 |
+| হাসান স্যার | শিক্ষক | 01700000101 |
+
+নিয়ম:
+
+- দুই পাশে **Column-এর সংখ্যা সমান** হতে হবে, আর ক্রম অনুযায়ী মিলবে (Type কাছাকাছি হলে ভালো)।
+- Column-এর নাম আসে **প্রথম** `SELECT` থেকে।
+- `ORDER BY` একদম শেষে একবার, পুরো ফলাফলের ওপর।
+
+| | `UNION` | `UNION ALL` |
+| --- | --- | --- |
+| ডুপ্লিকেট | বাদ দেয় | রেখে দেয় |
+| গতি | ধীর (মিলিয়ে দেখতে হয়) | দ্রুত |
+
+```sql
+SELECT city FROM students WHERE class = 8
+UNION
+SELECT city FROM students WHERE class = 9;      -- ৫টা শহর, প্রতিটা একবার
+
+SELECT city FROM students WHERE class = 8
+UNION ALL
+SELECT city FROM students WHERE class = 9;      -- ৭টা লাইন, ঢাকা তিনবার
+```
+
+<Tip title="ডুপ্লিকেট হওয়া অসম্ভব হলে UNION ALL">
+দুই অংশে একই Row আসা অসম্ভব (যেমন একপাশে ছাত্র, অন্যপাশে শিক্ষক, `role` Column আলাদা), তাহলে **`UNION ALL`** লেখো। ফলাফল একই, কিন্তু MySQL-কে অকারণে ডুপ্লিকেট খুঁজতে হয় না।
+</Tip>
+
+## এক ঝলক: WITH (CTE)
+
+লম্বা Subquery বারবার লিখতে হলে সেটাকে শুরুতে একটা নাম দেওয়া যায়। একে বলে **CTE** (Common Table Expression), MySQL 8.0 আর MariaDB 10.2 থেকে চলে:
+
+```sql
+WITH totals AS (
+  SELECT student_id, SUM(score) AS total
+  FROM marks
+  GROUP BY student_id
+)
+SELECT s.name, t.total
+FROM totals t
+JOIN students s ON s.id = t.student_id
+WHERE t.total > (SELECT AVG(total) FROM totals)
+ORDER BY t.total DESC;
+```
+
+| name | total |
+| --- | --- |
+| নুসরাত | 285 |
+| সাদিয়া | 274 |
+| রাফি | 253 |
+| মীম | 250 |
+| ইমরান | 235 |
+
+`totals` দুবার ব্যবহার হলো, লেখা হলো একবার। Query ওপর থেকে নিচে গল্পের মতো পড়া যায়।
+
+<BugMonster title="কুয়েরির ভেতরের দানব">
+
+**১. `Subquery returns more than 1 row`।** `=`-এর পাশে এমন Subquery যেটা অনেকগুলো মান দেয়। হয় `IN` ব্যবহার করো, নয়তো Subquery-কে একটা মানে নামাও (`MAX`, `LIMIT 1`)।
+
+**২. `Every derived table must have its own alias`।** `FROM (SELECT ...)`-এর পরে `AS কিছু` দাও।
+
+**৩. `NOT IN` + `NULL` = খালি ফলাফল।** ওপরের উদাহরণ। `NOT EXISTS`।
+
+**৪. `UNION`-এ Column সংখ্যা না মেলা।** `The used SELECT statements have a different number of columns`। দরকার হলে ফাঁকা জায়গায় `NULL` বা একটা স্থির মান বসাও।
+
+**৫. ধীর Correlated Subquery।** বড় টেবিলে প্রতিটা Row-এর জন্য ভেতরের Query চালানো ভারী হতে পারে। প্রায়ই একই প্রশ্ন JOIN বা Derived Table দিয়ে দ্রুত লেখা যায়; আধুনিক MySQL নিজেও অনেক সময় সেভাবে রূপান্তর করে নেয়। লেভেল ১৬-এ `EXPLAIN` দিয়ে কীভাবে দেখবে, শিখবে।
+
+</BugMonster>
+
+<Quest id="1" title="গড়ের চেয়ে ভালো">
+যেসব ছাত্রের গণিতের নম্বর গণিতের গড়ের চেয়ে বেশি, তাদের নাম আর নম্বর।
+
+<Solution>
+```sql
+SELECT s.name, m.score
+FROM students s
+JOIN marks m ON m.student_id = s.id
+WHERE m.subject_id = 1
+  AND m.score > (SELECT AVG(score) FROM marks WHERE subject_id = 1)
+ORDER BY m.score DESC;
+```
+
+গণিতের গড় 80.9, তাই নুসরাত, লামিয়া, সাদিয়া, মীম, রাফি।
+</Solution>
+</Quest>
+
+<Quest id="2" title="নিজের ক্লাসের গড়ের চেয়ে ভালো">
+যেসব ছাত্রের GPA **নিজের ক্লাসের** গড় GPA-র চেয়ে বেশি। (Correlated Subquery)
+
+<Solution>
+```sql
+SELECT s.name, s.class, s.gpa
+FROM students s
+WHERE s.gpa > (SELECT AVG(s2.gpa) FROM students s2 WHERE s2.class = s.class)
+ORDER BY s.class, s.gpa DESC;
+```
+
+ক্লাস ৮: নুসরাত, লামিয়া (গড় 4.55)। ক্লাস ৯: সাদিয়া, মীম (গড় 3.98)। ক্লাস ১০: ইমরান (গড় 3.75)।
+</Solution>
+</Quest>
+
+<Quest id="3" title="কাদের ফোন নেই, সবাই মিলে">
+ছাত্র আর শিক্ষক মিলিয়ে যাদের ফোন নম্বর নেই, তাদের নাম আর ভূমিকা এক তালিকায়।
+
+<Solution>
+```sql
+SELECT name, 'ছাত্র' AS role FROM students WHERE phone IS NULL
+UNION ALL
+SELECT name, 'শিক্ষক' FROM teachers WHERE phone IS NULL;
+```
+
+তানভীর, আরিফ, ইমরান (সব শিক্ষকের ফোন আছে)। ছাত্র আর শিক্ষক কখনো একই Row হবে না, তাই `UNION ALL`।
+</Solution>
+</Quest>
+
+<Boss title="বৃত্তি কমিটির তিন প্রশ্ন">
+বৃত্তি কমিটি তিনটা প্রশ্নের উত্তর চায়, প্রতিটা এক Query-তে:
+
+1. কোন ছাত্র **সব** বিষয়ে (গণিত, বাংলা, বিজ্ঞান) ৮০ বা বেশি পেয়েছে? যে কোনো পরীক্ষা দেয়নি, সে বাদ।
+2. প্রতিটা ক্লাসে মোট নম্বরে প্রথম কে?
+3. কোন শহরের কোনো ছাত্রই কোনো বিষয়ে ৭০-এর নিচে পায়নি?
+
+<Solution title="ইঙ্গিত ১">
+প্রশ্ন ১: "সবগুলোতে ৮০ বা বেশি" = "৮০-এর নিচে একটাও নেই" (`NOT EXISTS`), সাথে তিনটা পরীক্ষাই দিয়েছে কি না গুনে দেখা। নইলে যে পরীক্ষাই দেয়নি, সে-ও এসে যাবে।
+</Solution>
+
+<Solution title="ইঙ্গিত ২">
+প্রশ্ন ২: প্রত্যেকের মোট নম্বর আগে একটা Derived Table-এ, তারপর প্রতিটা ক্লাসের সর্বোচ্চ মোটের সাথে মেলাও (Correlated Subquery)। প্রশ্ন ৩: "কোনো ছাত্রই ... না", তাই আবার `NOT EXISTS`, এবার শহর ধরে।
+</Solution>
+
+<Solution>
+**১.** "সব বিষয়ে ≥ ৮০" মানে "৮০-এর নিচে কোনো বিষয় নেই" **এবং** "তিনটা বিষয়ই দিয়েছে":
+
+```sql
+SELECT s.name
+FROM students s
+WHERE NOT EXISTS (SELECT 1 FROM marks m WHERE m.student_id = s.id AND m.score < 80)
+  AND (SELECT COUNT(*) FROM marks m WHERE m.student_id = s.id) = 3;
+```
+
+নুসরাত, মীম, সাদিয়া। (দ্বিতীয় শর্ত না দিলে ফারিহাও আসত, কারণ তার "৮০-এর নিচে কোনো নম্বর নেই", কোনো নম্বরই নেই বলে!)
+
+**২.** Derived Table + Correlated Subquery:
+
+```sql
+SELECT t.class, t.name, t.total
+FROM (
+  SELECT s.id, s.name, s.class, SUM(m.score) AS total
+  FROM students s JOIN marks m ON m.student_id = s.id
+  GROUP BY s.id, s.name, s.class
+) AS t
+WHERE t.total = (
+  SELECT MAX(x.total) FROM (
+    SELECT s2.class, SUM(m2.score) AS total
+    FROM students s2 JOIN marks m2 ON m2.student_id = s2.id
+    GROUP BY s2.id, s2.class
+  ) AS x
+  WHERE x.class = t.class
+)
+ORDER BY t.class;
+```
+
+ক্লাস ৮: নুসরাত (285), ৯: সাদিয়া (274), ১০: ইমরান (235)। একই Derived Table দুবার লিখতে হলো; `WITH` দিয়ে লিখলে অনেক পরিষ্কার হয়, নিজে চেষ্টা করো।
+
+**৩.** শহরের দলে "৭০-এর নিচে কেউ নেই":
+
+```sql
+SELECT DISTINCT s.city
+FROM students s
+WHERE NOT EXISTS (
+  SELECT 1 FROM students s2
+  JOIN marks m ON m.student_id = s2.id
+  WHERE s2.city = s.city AND m.score < 70
+);
+```
+
+তানভীর (ঢাকা, বিজ্ঞান 68), আরিফ (রাজশাহী) আর জুবায়ের (খুলনা, গণিত 65) নিচে পেয়েছে, তাই ঢাকা, রাজশাহী আর খুলনা বাদ। বাকি: চট্টগ্রাম, সিলেট, বরিশাল। খেয়াল করো, চট্টগ্রামে ফারিহার কোনো নম্বর নেই, তাতে শর্ত ভাঙেনি।
+</Solution>
+</Boss>
+
+<Summary slug="level-12" />
+
+<Checkpoint questions={[
+  { q: "WHERE gpa > (SELECT AVG(gpa) FROM students) — ভেতরের Query কতবার চলে?", options: ["প্রতিটা Row-এর জন্য একবার", "একবার", "দুবার", "চলেই না"], answer: 1, why: "বাইরের কিছুর ওপর নির্ভর করে না, তাই একবার চালিয়ে মানটা বসিয়ে দেওয়া যায়।" },
+  { q: "Correlated Subquery কোনটা?", options: ["যেটা বাইরের Query-র Column ব্যবহার করে", "যেটা FROM-এ থাকে", "যেটা UNION ব্যবহার করে", "যেটা একটা মান দেয়"], answer: 0, why: "বাইরের Row-এর ওপর নির্ভর করে বলে প্রতিটা Row-এর জন্য আলাদা করে চলে।" },
+  { q: "id NOT IN (SELECT head_id FROM teachers) — head_id-তে একটা NULL থাকলে কী হয়?", options: ["NULL উপেক্ষা হয়", "কোনো Row আসে না", "Error", "সব Row আসে"], answer: 1, why: "প্রতিটা তুলনায় 'জানা নেই' ঢুকে যায়; NOT EXISTS ব্যবহার করো।" },
+  { q: "UNION আর UNION ALL-এর পার্থক্য?", options: ["কোনো পার্থক্য নেই", "UNION ডুপ্লিকেট বাদ দেয়, UNION ALL রাখে", "UNION ALL শুধু সংখ্যায়", "UNION ALL ধীর"], answer: 1, why: "ডুপ্লিকেট খুঁজতে হয় না বলে UNION ALL দ্রুতও।" },
+  { q: "FROM (SELECT ...) লিখলে MySQL-এ কী বাধ্যতামূলক?", options: ["WHERE", "একটা Alias", "ORDER BY", "LIMIT"], answer: 1, why: "'Every derived table must have its own alias'।" }
+]} />

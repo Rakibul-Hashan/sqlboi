@@ -1,0 +1,465 @@
+<Mission>
+- পরীক্ষা আর ইন্টারভিউয়ের প্রশ্নের পেছনে যে কয়েকটা **ঘুরেফিরে আসা নকশা** (Pattern) থাকে, সেগুলো চেনা
+- "অন্তত একটা", "একটাও না", "**সবগুলো**" (Relational Division): শব্দ দেখে নকশা বাছাই
+- শূন্য ধরে গড়, Aggregate-এর সর্বোচ্চ, নিজের দলের গড়ের সাথে তুলনা
+- Pivot (Row থেকে Column), `WITH ROLLUP` দিয়ে উপমোট, দ্বিতীয় সর্বোচ্চ
+- একই প্রশ্নের Relational Algebra রূপ
+</Mission>
+
+<Note title="শুরুর আগে">
+জোন ২-এর খাতা ([school-zone2.sql](/sql/school-zone2.sql)) চালাও। এই লেভেলে নতুন Syntax প্রায় নেই; সবই আগের লেভেলগুলোর জিনিস। নতুন হলো **প্রশ্ন পড়ে কোন নকশা লাগবে তা চেনা**। এটাই জটিল Query লেখার আসল দক্ষতা।
+</Note>
+
+## প্রশ্নের শব্দ → নকশা
+
+| প্রশ্নে যা লেখা | নকশা | মূল অস্ত্র |
+| --- | --- | --- |
+| "অন্তত একটা", "কোনো একটা" | অস্তিত্ব | `JOIN` + `DISTINCT`, বা `EXISTS` |
+| "একটাও না", "কখনো না" | অনস্তিত্ব | `NOT EXISTS`, বা `LEFT JOIN ... IS NULL` |
+| "সবগুলো", "প্রতিটা" | বিভাজন (Division) | দুইবার `NOT EXISTS`, বা `COUNT` মেলানো |
+| "নিজের ক্লাস/দলের গড়ের চেয়ে" | দলের সাথে তুলনা | Correlated Subquery, বা Window `AVG() OVER` |
+| "সবচেয়ে বেশি মোট" | Aggregate-এর সর্বোচ্চ | `HAVING = (SELECT MAX(...) FROM (...))` |
+| "প্রতি দলের সেরা N" | Top-N per group | Window র‍্যাঙ্ক + বাইরে ছাঁকা |
+| "গড়ে কয়টা" (শূন্যসহ) | শূন্য ধরে গড় | `LEFT JOIN` + `COUNT(col)` |
+
+এবার একে একে।
+
+## নকশা ১: অন্তত একটা
+
+**প্রশ্ন:** রুমানা ম্যাডাম যে বিষয় পড়ান, সেখানে অন্তত একবার ৯০ বা বেশি পেয়েছে কারা?
+
+```sql
+SELECT DISTINCT s.name
+FROM students s
+JOIN marks m      ON m.student_id = s.id
+JOIN subjects sub ON sub.id = m.subject_id
+JOIN teachers t   ON t.id = sub.teacher_id
+WHERE t.name = 'রুমানা ম্যাডাম' AND m.score >= 90
+ORDER BY s.name;
+```
+
+| name |
+| --- |
+| নুসরাত |
+| লামিয়া |
+
+চারটা টেবিলের শিকল: ছাত্র → নম্বর → বিষয় → শিক্ষক। `DISTINCT` কেন? রুমানা ম্যাডাম দুটো বিষয় পড়ালে আর কেউ দুটোতেই ৯০ পেলে, নাম দুবার আসত। "অন্তত একটা" প্রশ্নে JOIN করলে **ডুপ্লিকেট হয় কি না** সবসময় ভাবো।
+
+## নকশা ২: একটাও না
+
+**প্রশ্ন:** কোন ছাত্র কোনো বিষয়েই ৭০-এর নিচে পায়নি?
+
+```sql
+SELECT s.name
+FROM students s
+WHERE NOT EXISTS (
+  SELECT 1 FROM marks m
+  WHERE m.student_id = s.id AND m.score < 70
+)
+ORDER BY s.id;
+```
+
+| name |
+| --- |
+| রাফি |
+| নুসরাত |
+| মীম |
+| সাদিয়া |
+| ফারিহা |
+| ইমরান |
+| লামিয়া |
+
+ফারিহা? তার তো কোনো নম্বরই নেই! ঠিকই আছে: "৭০-এর নিচে একটাও নেই" তার জন্য সত্যি, কারণ তার কোনো নম্বরই নেই। যুক্তিবিদ্যায় একে বলে **শূন্যতার সত্য** (Vacuous Truth)। প্রশ্ন যদি হয় "যারা পরীক্ষা দিয়েছে তাদের মধ্যে", তাহলে একটা শর্ত যোগ করতে হবে:
+
+```sql
+WHERE EXISTS (SELECT 1 FROM marks m WHERE m.student_id = s.id)
+  AND NOT EXISTS (SELECT 1 FROM marks m WHERE m.student_id = s.id AND m.score < 70)
+```
+
+<Remember>
+**"একটাও না" আর "সবগুলো" ধরনের প্রশ্নে খালি দলের (যার কোনো ডেটাই নেই) কী হবে, সেটা সবসময় আলাদা করে ভাবো।** প্রশ্নকর্তা প্রায় কখনো এটা বলে দেন না, কিন্তু উত্তর বদলে যায়।
+</Remember>
+
+## নকশা ৩: সবগুলো (Relational Division)
+
+**প্রশ্ন:** কোন ছাত্র এমন **প্রতিটা** বিষয়ে পরীক্ষা দিয়েছে, যেটার একজন শিক্ষক আছেন?
+
+এটা সবচেয়ে কঠিন নকশা, কারণ SQL-এ "সবগুলো" লেখার সরাসরি কোনো শব্দ নেই। কৌশল হলো উল্টো করে ভাবা:
+
+> "সব বিষয়ে দিয়েছে" = "এমন কোনো বিষয় **নেই**, যেটায় সে **দেয়নি**।"
+
+দুটো "না", তাই দুটো `NOT EXISTS`:
+
+```sql
+SELECT s.name
+FROM students s
+WHERE NOT EXISTS (                    -- এমন কোনো বিষয় নেই...
+  SELECT 1 FROM subjects sub
+  WHERE sub.teacher_id IS NOT NULL
+    AND NOT EXISTS (                  -- ...যেটায় এই ছাত্রের নম্বর নেই
+      SELECT 1 FROM marks m
+      WHERE m.student_id = s.id AND m.subject_id = sub.id
+    )
+)
+ORDER BY s.id;
+```
+
+| name |
+| --- |
+| রাফি |
+| নুসরাত |
+| তানভীর |
+| মীম |
+| আরিফ |
+| সাদিয়া |
+| জুবায়ের |
+| ইমরান |
+
+লামিয়া বাদ (বিজ্ঞান দেয়নি), ফারিহা বাদ (কিছুই দেয়নি)। ইংরেজির শিক্ষক নেই, তাই ওটা হিসাবের বাইরে।
+
+**দ্বিতীয় উপায়, গুনে মেলানো:** "যতগুলো বিষয় আছে, ততগুলোতেই দিয়েছে"
+
+```sql
+SELECT s.name
+FROM students s
+JOIN marks m      ON m.student_id = s.id
+JOIN subjects sub ON sub.id = m.subject_id
+WHERE sub.teacher_id IS NOT NULL
+GROUP BY s.id, s.name
+HAVING COUNT(DISTINCT m.subject_id) = (SELECT COUNT(*) FROM subjects WHERE teacher_id IS NOT NULL)
+ORDER BY s.id;
+```
+
+| name |
+| --- |
+| রাফি |
+| নুসরাত |
+| তানভীর |
+| মীম |
+| আরিফ |
+| সাদিয়া |
+| জুবায়ের |
+| ইমরান |
+
+একই উত্তর। গোনার উপায়টা পড়তে সহজ, কিন্তু দুটো জিনিস মাথায় রাখো: `JOIN`-এর `WHERE`-এ ভাজকের শর্ত (`teacher_id IS NOT NULL`) আবার দিতে হয়, নাহলে অন্য বিষয়ের নম্বর গোনায় ঢুকে যায়; আর `COUNT(DISTINCT ...)`, যাতে একই বিষয়ের দুটো Row থাকলে দুবার না গোনে।
+
+**Relational Algebra-তে** এর নিজস্ব চিহ্ন আছে, ভাগ (÷):
+
+<Flow steps={[
+  "R = π student_id, subject_id (marks)",
+  "S = π id (σ teacher_id ≠ NULL (subjects))",
+  "R ÷ S = যে student_id-গুলো S-এর প্রতিটা subject-এর সাথে R-এ আছে"
+]} />
+
+<Analogy>
+স্ট্যাম্প সংগ্রহের খাতা। "কার কাছে সিরিজের **সবগুলো** স্ট্যাম্প আছে?" উত্তর বের করার দুটো উপায়: (১) প্রত্যেকের খাতা খুলে দেখো, সিরিজের এমন কোনো স্ট্যাম্প আছে কি না যেটা তার খাতায় নেই (দুইবার NOT EXISTS); (২) প্রত্যেকের খাতায় সিরিজের স্ট্যাম্প গোনো, সিরিজে মোট যতগুলো ততগুলো হলে সে পূর্ণ (COUNT)।
+</Analogy>
+
+## নকশা ৪: শূন্য ধরে গড়
+
+**প্রশ্ন:** প্রতি ছাত্র গড়ে কয়টা পরীক্ষা দিয়েছে?
+
+সহজ মনে হয়। কিন্তু এই প্রথম চেষ্টাটা দেখো:
+
+```sql
+SELECT ROUND(AVG(cnt), 2) AS wrong_avg
+FROM (SELECT student_id, COUNT(*) AS cnt FROM marks GROUP BY student_id) t;
+```
+
+| wrong_avg |
+| --- |
+| 2.89 |
+
+ভুল! `marks` থেকে শুরু করায় ফারিহা (০টা পরীক্ষা) হিসাবেই আসেনি: ২৬ ÷ ৯। আসল গড় ২৬ ÷ ১০:
+
+```sql
+SELECT ROUND(AVG(cnt), 2) AS right_avg
+FROM (
+  SELECT s.id, COUNT(m.student_id) AS cnt
+  FROM students s
+  LEFT JOIN marks m ON m.student_id = s.id
+  GROUP BY s.id
+) t;
+```
+
+| right_avg |
+| --- |
+| 2.60 |
+
+দুটো জিনিস একসাথে লাগে: সব ছাত্র ধরে রাখতে `LEFT JOIN`, আর `COUNT(*)` না, `COUNT(m.student_id)`, কারণ `COUNT(*)` ফারিহার `NULL`-ভরা Row-কেও ১ গুনত (লেভেল ১১-এর ফাঁদ)।
+
+## নকশা ৫: নিজের দলের সাথে তুলনা
+
+**প্রশ্ন:** একটা View বানাও, যেখানে শুধু নিজের ক্লাসের গড় GPA-র চেয়ে বেশি পাওয়া ছাত্ররা থাকবে।
+
+```sql
+CREATE OR REPLACE VIEW above_class_avg AS
+SELECT s.name, s.class, s.gpa
+FROM students s
+WHERE s.gpa > (SELECT AVG(s2.gpa) FROM students s2 WHERE s2.class = s.class);
+
+SELECT * FROM above_class_avg ORDER BY class, gpa DESC;
+```
+
+| name | class | gpa |
+| --- | --- | --- |
+| নুসরাত | 8 | 5.00 |
+| লামিয়া | 8 | 4.95 |
+| সাদিয়া | 9 | 4.80 |
+| মীম | 9 | 4.25 |
+| ইমরান | 10 | 4.00 |
+
+`s2.class = s.class`: ভেতরের Query প্রতিটা ছাত্রের জন্য **তার** ক্লাসের গড় বের করে (Correlated Subquery, লেভেল ১২)। একই কাজ লেভেল ৪.৩-এ CTE দিয়ে আর লেভেল ৪.২-এ Window দিয়ে করেছি; তিনটাই সঠিক, তবে View-এর ভেতরে এই Correlated রূপটা সবচেয়ে বেশি দেখা যায়।
+
+## নকশা ৬: Aggregate-এর সর্বোচ্চ
+
+**প্রশ্ন:** কোন বিষয়ে সব ছাত্রের মোট নম্বর সবচেয়ে বেশি?
+
+`MAX(SUM(score))` লেখা যায় না: দুটো Aggregate একে অপরের ভেতরে নেস্ট করা নিষেধ। তাই ধাপে ভাঙি: ভেতরে প্রতিটা বিষয়ের মোট, তার `MAX`, আর বাইরে সেটার সাথে মেলানো।
+
+```sql
+SELECT sub.name, SUM(m.score) AS total
+FROM marks m
+JOIN subjects sub ON sub.id = m.subject_id
+GROUP BY sub.id, sub.name
+HAVING SUM(m.score) = (
+  SELECT MAX(t) FROM (SELECT SUM(score) AS t FROM marks GROUP BY subject_id) x
+);
+```
+
+| name | total |
+| --- | --- |
+| গণিত | 728 |
+
+`ORDER BY total DESC LIMIT 1` লিখলেও এখানে একই উত্তর আসত, কিন্তু দুটো বিষয়ের মোট সমান হলে সেটা একটাকে চুপচাপ বাদ দিত। `HAVING = MAX` দুটোই দেখায়।
+
+## নকশা ৭: সর্বোচ্চ, সর্বনিম্ন বা গড়ের সমান
+
+**প্রশ্ন:** কাদের GPA স্কুলের সর্বোচ্চ, সর্বনিম্ন বা গড় GPA-র সমান?
+
+```sql
+SELECT name, gpa
+FROM students
+WHERE gpa = (SELECT MAX(gpa) FROM students)
+   OR gpa = (SELECT MIN(gpa) FROM students)
+   OR gpa = (SELECT AVG(gpa) FROM students);
+```
+
+| name | gpa |
+| --- | --- |
+| নুসরাত | 5.00 |
+| আরিফ | 2.90 |
+
+গড়ের সমান কেউ এল না কেন? গড় হলো `4.183333`; কারো GPA ঠিক এটা হওয়া প্রায় অসম্ভব। `MAX` আর `MIN` সবসময় কোনো না কোনো আসল মান, কিন্তু `AVG` সাধারণত না। প্রশ্নে "গড়ের সমান" থাকলে উত্তর খালি আসা স্বাভাবিক; চাইলে `ROUND(AVG(gpa), 2)` দিয়ে কাছাকাছি মেলানো যায়, কিন্তু সেটা আলাদা প্রশ্ন।
+
+## নকশা ৮: Pivot (Row থেকে Column)
+
+প্রতিটা বিষয়ের নম্বর আলাদা Row-তে আছে, কিন্তু রিপোর্ট কার্ডে চাই একজনের সব নম্বর এক লাইনে:
+
+```sql
+SELECT s.name,
+       SUM(CASE WHEN m.subject_id = 1 THEN m.score END) AS ganit,
+       SUM(CASE WHEN m.subject_id = 2 THEN m.score END) AS bangla,
+       SUM(CASE WHEN m.subject_id = 3 THEN m.score END) AS biggan,
+       SUM(m.score) AS total
+FROM students s
+JOIN marks m ON m.student_id = s.id
+GROUP BY s.id, s.name
+ORDER BY total DESC;
+```
+
+| name | ganit | bangla | biggan | total |
+| --- | --- | --- | --- | --- |
+| নুসরাত | 98 | 92 | 95 | 285 |
+| সাদিয়া | 92 | 88 | 94 | 274 |
+| রাফি | 85 | 78 | 90 | 253 |
+| মীম | 88 | 80 | 82 | 250 |
+| ইমরান | 80 | 76 | 79 | 235 |
+| তানভীর | 70 | 75 | 68 | 213 |
+| জুবায়ের | 65 | 72 | 70 | 207 |
+| লামিয়া | 95 | 97 | NULL | 192 |
+| আরিফ | 55 | 62 | 48 | 165 |
+
+প্রতিটা `CASE` শুধু নিজের বিষয়ের নম্বর রাখে, বাকিগুলোয় `NULL`; আর `SUM` সেই `NULL`-গুলো বাদ দিয়ে একটা মানই রাখে। লামিয়ার বিজ্ঞান `NULL`, কারণ সে দেয়নি। MySQL-এ আলাদা `PIVOT` শব্দ নেই (SQL Server-এ আছে), তাই এটাই প্রচলিত উপায়। একই কৌশল দিয়ে "পাস কয়জন, ফেল কয়জন" এক লাইনে গোনা যায়: `SUM(CASE WHEN score >= 40 THEN 1 ELSE 0 END)`।
+
+## নকশা ৯: উপমোট আর সর্বমোট (WITH ROLLUP)
+
+```sql
+SELECT IF(GROUPING(class), 'সব ক্লাস', class) AS class,
+       IF(GROUPING(city), 'মোট', city) AS city,
+       COUNT(*) AS n
+FROM students
+GROUP BY class, city WITH ROLLUP;
+```
+
+| class | city | n |
+| --- | --- | --- |
+| 8 | চট্টগ্রাম | 1 |
+| 8 | ঢাকা | 2 |
+| 8 | বরিশাল | 1 |
+| 8 | মোট | 4 |
+| 9 | ঢাকা | 1 |
+| 9 | রাজশাহী | 1 |
+| 9 | সিলেট | 1 |
+| 9 | মোট | 3 |
+| 10 | খুলনা | 1 |
+| 10 | চট্টগ্রাম | 1 |
+| 10 | ঢাকা | 1 |
+| 10 | মোট | 3 |
+| সব ক্লাস | মোট | 10 |
+
+`WITH ROLLUP` প্রতিটা দলের শেষে একটা উপমোট Row আর একদম শেষে সর্বমোট যোগ করে। ওই Row-গুলোতে Column-এর মান `NULL` থাকে; `GROUPING(col)` বলে দেয় `NULL`-টা ROLLUP-এর বানানো (১) নাকি আসল ডেটার (০)। (`GROUPING()` MySQL 8.0 থেকে।)
+
+## নকশা ১০: দ্বিতীয় সর্বোচ্চ
+
+**প্রশ্ন:** প্রতিটা বিষয়ে দ্বিতীয় সর্বোচ্চ নম্বর কত? Window ছাড়াও করা যায়: "সর্বোচ্চের চেয়ে কম যতগুলো, তাদের মধ্যে সর্বোচ্চ"।
+
+```sql
+SELECT sub.name, MAX(m.score) AS second
+FROM marks m
+JOIN subjects sub ON sub.id = m.subject_id
+WHERE m.score < (SELECT MAX(m2.score) FROM marks m2 WHERE m2.subject_id = m.subject_id)
+GROUP BY sub.id, sub.name
+ORDER BY sub.id;
+```
+
+| name | second |
+| --- | --- |
+| গণিত | 95 |
+| বাংলা | 92 |
+| বিজ্ঞান | 94 |
+
+তৃতীয়, চতুর্থ... হলে এভাবে আর চলে না; তখন লেভেল ৪.২-এর `DENSE_RANK() = N`।
+
+## Relational Algebra রূপ: "কখনো না"
+
+পরীক্ষায় প্রায়ই একই প্রশ্ন Relational Algebra-তে লিখতে বলে। "কোন বিষয়ে কেউ কখনো পরীক্ষা দেয়নি?"
+
+<Flow steps={[
+  "সব বিষয়: π id (subjects)",
+  "যেগুলোর নম্বর আছে: π subject_id (marks)",
+  "বিয়োগ: π id (subjects) − π subject_id (marks)",
+  "নাম পেতে: π name (subjects ⋈ id = ... (ফলাফল))"
+]} />
+
+SQL-এ বিয়োগ (−) মানেই `NOT EXISTS` বা `NOT IN` বা `LEFT JOIN ... IS NULL`:
+
+```sql
+SELECT name FROM subjects sub
+WHERE NOT EXISTS (SELECT 1 FROM marks m WHERE m.subject_id = sub.id);
+```
+
+| name |
+| --- |
+| ইংরেজি |
+
+| Relational Algebra | SQL |
+| --- | --- |
+| σ (Selection) | `WHERE` |
+| π (Projection) | `SELECT DISTINCT` কলাম |
+| ⋈ (Join) | `JOIN ... ON` |
+| ∪, ∩ | `UNION`, `INTERSECT` |
+| − (Difference) | `EXCEPT`, `NOT EXISTS` |
+| ÷ (Division) | দুইবার `NOT EXISTS` |
+| γ (Grouping) | `GROUP BY` + Aggregate |
+
+<BugMonster title="নকশার ফাঁদ">
+
+**১. "অন্তত একটা"-তে ডুপ্লিকেট।** JOIN বহু Row বানায়; নামের তালিকা চাইলে `DISTINCT`।
+
+**২. খালি দল ভুলে যাওয়া।** ফারিহার মতো যার কোনো ডেটাই নেই, সে "একটাও না" প্রশ্নে চলে আসে আর "শূন্যসহ গড়" প্রশ্নে হারিয়ে যায়। দুটোই ভাবো।
+
+**৩. Division-এ `COUNT(*)`।** একই বিষয় দুবার থাকলে বা ভাজকের বাইরের বিষয় গোনায় ঢুকলে উত্তর ভুল। `COUNT(DISTINCT ...)` আর ভাজকের শর্ত দুই জায়গায়।
+
+**৪. `MAX(SUM(...))`।** `ERROR 1111: Invalid use of group function`। ভেতরে Derived Table-এ `SUM`, বাইরে `MAX`।
+
+**৫. `LIMIT 1` দিয়ে "সবচেয়ে বেশি"।** সমান হলে একজন চুপচাপ বাদ পড়ে। `= (SELECT MAX ...)` বা `RANK() = 1`।
+
+</BugMonster>
+
+<Quest id="1" title="দুটোতেই">
+গণিত আর বিজ্ঞান **দুটোতেই** ৯০ বা বেশি পেয়েছে কারা?
+
+<Solution>
+```sql
+SELECT s.name
+FROM students s
+JOIN marks m ON m.student_id = s.id
+WHERE m.subject_id IN (1, 3) AND m.score >= 90
+GROUP BY s.id, s.name
+HAVING COUNT(*) = 2;
+```
+
+নুসরাত আর সাদিয়া। "দুটোতেই" ছোট আকারের Division: দুটো শর্তের Row গুনে ২ হলে পাস। লামিয়া গণিতে ৯৫ পেলেও বিজ্ঞান দেয়নি, তাই বাদ। `WHERE ... AND subject_id = 1 AND subject_id = 3` লিখলে কেউ আসবে না, কারণ একটা Row একসাথে দুটো বিষয়ের হতে পারে না।
+</Solution>
+</Quest>
+
+<Quest id="2" title="পাস-ফেল এক লাইনে">
+প্রতিটা বিষয়ে কয়জন ৮০ বা বেশি, কয়জন ৮০-এর কম পেয়েছে, এক Row-তে দেখাও।
+
+<Solution>
+```sql
+SELECT sub.name,
+       SUM(CASE WHEN m.score >= 80 THEN 1 ELSE 0 END) AS high,
+       SUM(CASE WHEN m.score <  80 THEN 1 ELSE 0 END) AS low
+FROM marks m
+JOIN subjects sub ON sub.id = m.subject_id
+GROUP BY sub.id, sub.name;
+```
+
+MySQL-এ তুলনার ফল নিজেই ১ বা ০, তাই `SUM(m.score >= 80)` লিখলেও চলে। তবে `CASE` অন্য Database-এও চলে।
+</Solution>
+</Quest>
+
+<Quest id="3" title="সবচেয়ে বেশি ছাত্রের শহর">
+কোন শহর থেকে সবচেয়ে বেশি ছাত্র? সমান হলে সব শহর।
+
+<Solution>
+```sql
+SELECT city, COUNT(*) AS n
+FROM students
+GROUP BY city
+HAVING COUNT(*) = (SELECT MAX(c) FROM (SELECT COUNT(*) AS c FROM students GROUP BY city) t);
+```
+
+ঢাকা, ৪ জন। নকশা ৬: Aggregate-এর সর্বোচ্চ।
+</Solution>
+</Quest>
+
+<Boss title="পূর্ণ শিক্ষকের ছাত্র">
+এমন ছাত্রদের নাম দাও, যারা হাসান স্যারের **সরাসরি বা পরোক্ষ অধীনের সব শিক্ষকের** (হাসান স্যারসহ) পড়ানো প্রতিটা বিষয়ে পরীক্ষা দিয়েছে। মানে লেভেল ৪.৩-এর Recursive CTE দিয়ে শিক্ষকদল বের করো, তাদের বিষয়গুলো ভাজক, আর তারপর Division।
+
+<Solution>
+```sql
+WITH RECURSIVE team AS (
+  SELECT id FROM teachers WHERE name = 'হাসান স্যার'
+  UNION ALL
+  SELECT t.id FROM teachers t JOIN team ON t.head_id = team.id
+),
+target AS (
+  SELECT sub.id FROM subjects sub WHERE sub.teacher_id IN (SELECT id FROM team)
+)
+SELECT s.name
+FROM students s
+WHERE NOT EXISTS (
+  SELECT 1 FROM target tg
+  WHERE NOT EXISTS (
+    SELECT 1 FROM marks m WHERE m.student_id = s.id AND m.subject_id = tg.id
+  )
+)
+ORDER BY s.id;
+```
+
+হাসান স্যারের দলের তিনজন শিক্ষক গণিত, বাংলা আর বিজ্ঞান পড়ান (শারমিন ম্যাডামের কোনো বিষয় নেই), তাই উত্তর ওপরের Division-এর ৮ জনই। কিন্তু শুধু রুমানা ম্যাডাম থেকে শুরু করলে ভাজক হয়ে যায় শুধু বাংলা, আর তখন লামিয়াও আসবে। নকশাগুলো এভাবেই জোড়া লাগে: CTE ভাজক বানায়, Division বাকিটা করে।
+</Solution>
+</Boss>
+
+<Summary slug="level-4-4" />
+
+<Checkpoint questions={[
+  { q: "\"সব বিষয়ে পরীক্ষা দিয়েছে\" লিখতে কোন উল্টো চিন্তা কাজে লাগে?", options: ["এমন কোনো বিষয় আছে যেটায় দিয়েছে", "এমন কোনো বিষয় নেই যেটায় দেয়নি", "সব বিষয়ের নম্বর যোগ করো", "LIMIT 1"], answer: 1, why: "তাই দুইবার NOT EXISTS: Relational Division।" },
+  { q: "ফারিহার কোনো নম্বর নেই। \"কোনো বিষয়ে ৭০-এর নিচে পায়নি\" প্রশ্নে সে কি আসবে?", options: ["না, কখনো না", "হ্যাঁ, কারণ তার কোনো ৭০-এর নিচের নম্বর নেই (শূন্যতার সত্য)", "Error হবে", "শুধু LEFT JOIN-এ"], answer: 1, why: "পরীক্ষা দেওয়াদের মধ্যে চাইলে আলাদা EXISTS শর্ত যোগ করো।" },
+  { q: "শূন্যসহ গড় পেতে কী লাগে?", options: ["INNER JOIN + COUNT(*)", "LEFT JOIN + COUNT(ডানের কলাম)", "AVG(*)", "WHERE score > 0"], answer: 1, why: "LEFT JOIN সবাইকে রাখে, COUNT(col) NULL গোনে না।" },
+  { q: "MAX(SUM(score)) লিখলে কী হয়?", options: ["সর্বোচ্চ মোট আসে", "ERROR 1111, নেস্টেড Aggregate নিষেধ", "০ আসে", "NULL আসে"], answer: 1, why: "ভেতরে Derived Table-এ SUM, বাইরে MAX।" },
+  { q: "Pivot-এ SUM(CASE WHEN subject_id = 1 THEN score END) কী করে?", options: ["সব বিষয়ের যোগফল", "শুধু বিষয় ১-এর নম্বর রাখে, বাকিগুলো NULL, তারপর এক মানে আনে", "Row মুছে দেয়", "Error"], answer: 1, why: "প্রতিটা CASE একটা Column বানায়।" }
+]} />

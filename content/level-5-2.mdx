@@ -1,0 +1,597 @@
+<Mission>
+- একটা পুরো অ্যাসাইনমেন্ট প্রশ্ন (CSE2238, প্রশ্ন ১) শূন্য থেকে সমাধান, লেভেল ৫.১-এর **ছয় ধাপ** মেনে
+- (i) "অন্তত একটা": কোন টেবিলের শর্ত, আর ডুপ্লিকেট কেন আসে
+- (ii) "প্রতিটা" (Relational Division): দুইভাবে, আর রিটেকের ফাঁদ
+- (iii) "যে কিছুই নেয়নি তাকেও গোনো": শূন্যসহ গড়
+</Mission>
+
+<Note title="শুরুর আগে: Database নামাও">
+খাতা: [q1-course.sql](/sql/assignment/q1-course.sql)। নিজের MySQL-এ চালাও `mysql -u root -p < q1-course.sql`, তারপর `USE asg_course;`। XAMPP-এর phpMyAdmin হলে **Import** ট্যাবে ফাইলটা দাও। এটা `asg_course` নামে নতুন Database বানায়, তোমার অন্য কিছুতে হাত দেয় না।
+
+নিজের কম্পিউটারে কিছু না থাকলেও চলবে: এই পাতার প্রতিটা Query-র নিচে **চালাও** বোতাম আছে (ব্রাউজারেই চলে), আর **বদলে দেখো** চেপে নিজের মতো লিখে চালানো যায়।
+</Note>
+
+## প্রশ্ন
+
+> **1.** Consider the following course registration database and write the following queries in SQL:
+>
+> student (<u>student_id</u>, name, dept)<br />
+> course (<u>course_code</u>, title, instructor, offered_by)<br />
+> registered (<u>student_id, course_code, semester</u>)
+>
+> **(i)** Find the student ID and name of each student who has registered for at least one course offered by the "CSE" department.<br />
+> **(ii)** Find the student ID and name of each student who has registered for every course taught by "Dr. Rahman".<br />
+> **(iii)** Find the average number of courses registered per student. Note that a student who has not registered for any course does not appear in the registered relation, but that student must still be counted in the average.
+
+## Database চেনা
+
+উত্তরে হাত দেওয়ার আগে টেবিলগুলো চিনে নিই (লেভেল ৫.১-এর "শুরুর আগে একবার")।
+
+### টেবিলের গঠন
+
+| টেবিল | Column | টাইপ | চাবি | মানে |
+| --- | --- | --- | --- | --- |
+| `student` | `student_id` | `INT` | PK | ছাত্রের নম্বর |
+| | `name` | `VARCHAR(50)` | | নাম |
+| | `dept` | `VARCHAR(10)` | | ছাত্র **কোন বিভাগের** (CSE, EEE, BBA) |
+| `course` | `course_code` | `VARCHAR(10)` | PK | কোর্সের কোড |
+| | `title` | `VARCHAR(80)` | | কোর্সের নাম |
+| | `instructor` | `VARCHAR(50)` | | কে পড়ান |
+| | `offered_by` | `VARCHAR(10)` | | কোর্সটা **কোন বিভাগ দেয়** |
+| `registered` | `student_id` | `INT` | PK, FK → `student` | কে নিয়েছে |
+| | `course_code` | `VARCHAR(10)` | PK, FK → `course` | কোন কোর্স |
+| | `semester` | `VARCHAR(15)` | PK | কোন সেমিস্টারে |
+
+দুটো জিনিস এখনই খেয়াল করো, পরে কাজে লাগবে:
+
+1. **দুটো আলাদা "বিভাগ" আছে।** `student.dept` হলো ছাত্রের বিভাগ, `course.offered_by` হলো কোর্সের বিভাগ। EEE-র ছাত্রও CSE-র কোর্স নিতে পারে।
+2. **`registered`-এর Primary Key তিনটা Column মিলে।** মানে একই ছাত্র একই কোর্স আলাদা সেমিস্টারে আবার নিতে পারে (রিটেক)। তাই "কয়টা কোর্স" আর "কয়টা রেজিস্ট্রেশন" এক জিনিস না।
+
+### সম্পর্ক
+
+<Flow steps={[
+  "student.student_id",
+  "registered (student_id, course_code)",
+  "course.course_code"
+]} />
+
+`registered` হলো মাঝের সেতু (M:N সম্পর্ক, লেভেল ১৪): একজন ছাত্র অনেক কোর্স, একটা কোর্সে অনেক ছাত্র। ছাত্র থেকে কোর্সের তথ্যে যেতে হলে সবসময় এই সেতু পেরোতে হবে।
+
+### পুরো ডেটা
+
+`student` (১০ জন):
+
+| student_id | name | dept |
+| --- | --- | --- |
+| 1 | Rafi | CSE |
+| 2 | Nusrat | CSE |
+| 3 | Tanvir | EEE |
+| 4 | Mim | CSE |
+| 5 | Arif | BBA |
+| 6 | Sadia | EEE |
+| 7 | Jubayer | CSE |
+| 8 | Imran | CSE |
+| 9 | Farhana | BBA |
+| 10 | Labiba | EEE |
+
+`course` (৮টা):
+
+| course_code | title | instructor | offered_by |
+| --- | --- | --- | --- |
+| BBA101 | Principles of Management | Ms. Karim | BBA |
+| CSE101 | Structured Programming | Dr. Rahman | CSE |
+| CSE205 | Data Structures | Dr. Rahman | CSE |
+| CSE238 | Database Management System | Dr. Rahman | CSE |
+| CSE311 | Computer Networks | Ms. Akter | CSE |
+| EEE101 | Basic Electrical Circuits | Dr. Hossain | EEE |
+| MAT101 | Calculus | Dr. Rahman | MAT |
+| PHY101 | Physics I | Dr. Mizanur Rahman | PHY |
+
+`registered` (২৫টা), ছাত্র ধরে সাজানো:
+
+| student_id | course_code | semester |
+| --- | --- | --- |
+| 1 | CSE101 | Spring-2025 |
+| 1 | MAT101 | Spring-2025 |
+| 1 | CSE205 | Fall-2025 |
+| 1 | CSE238 | Spring-2026 |
+| 1 | CSE311 | Spring-2026 |
+| 2 | CSE101 | Spring-2025 |
+| 2 | CSE205 | Fall-2025 |
+| 2 | CSE238 | Spring-2026 |
+| 3 | EEE101 | Spring-2025 |
+| 3 | CSE101 | Fall-2025 |
+| 4 | CSE101 | Spring-2025 |
+| 4 | CSE101 | Fall-2025 |
+| 4 | CSE205 | Fall-2025 |
+| 4 | CSE238 | Spring-2026 |
+| 5 | BBA101 | Spring-2025 |
+| 5 | MAT101 | Fall-2025 |
+| 6 | EEE101 | Spring-2025 |
+| 6 | PHY101 | Fall-2025 |
+| 6 | CSE311 | Spring-2026 |
+| 7 | CSE101 | Spring-2025 |
+| 7 | CSE205 | Spring-2025 |
+| 7 | CSE238 | Fall-2025 |
+| 7 | MAT101 | Fall-2025 |
+| 7 | PHY101 | Spring-2026 |
+| 8 | BBA101 | Fall-2025 |
+
+### ডেটার ভেতরে লুকানো ফাঁদ
+
+ডেটা ইচ্ছা করে এমনভাবে সাজানো, যাতে ভুল Query ধরা পড়ে:
+
+- **Imran** CSE-র ছাত্র, কিন্তু CSE-র কোনো কোর্স নেয়নি (শুধু BBA101)।
+- **Tanvir** আর **Sadia** EEE-র ছাত্র, কিন্তু CSE-র কোর্স নিয়েছে।
+- **Dr. Rahman** CSE-র তিনটা কোর্সের পাশাপাশি **MAT101**-ও পড়ান। আর PHY101 পড়ান অন্য একজন, **Dr. Mizanur Rahman**।
+- **Mim** CSE101 দুই সেমিস্টারে নিয়েছে (রিটেক)।
+- **Farhana** আর **Labiba** কোনো কোর্সই নেয়নি, তাই `registered`-এ তাদের নামই নেই।
+
+<Playground db="q1-course" />
+
+## (i) অন্তত একটা CSE কোর্স
+
+**দ্রুত পথ:** [এই প্রশ্নের টেমপ্লেট খোলো](/templates?p=exists), নিজের নাম বসিয়ে চালাও। নিচে পুরো ভাঙা, ধাপে ধাপে।
+
+### ধাপ ১: নিজের ভাষায় বলো
+
+"CSE বিভাগ যে কোর্সগুলো **দেয়**, তার কোনো একটাতেও যে ছাত্র রেজিস্ট্রেশন করেছে, তার আইডি আর নাম।" প্রতিটা Row = **একজন ছাত্র**, একবারই।
+
+### ধাপ ২: শব্দ দাগাও
+
+| প্রশ্নের অংশ | মানে | SQL-এ |
+| --- | --- | --- |
+| "student ID and name" | আউটপুট | `SELECT s.student_id, s.name` |
+| "each student" | প্রতি Row একজন ছাত্র | ডুপ্লিকেট চলবে না |
+| "registered for" | `registered` টেবিল লাগবে | `JOIN registered` |
+| "course offered by CSE" | শর্ত **কোর্সের** ওপর | `course.offered_by = 'CSE'` |
+| "at least one" | অস্তিত্বের নকশা | `JOIN` + `DISTINCT`, বা `EXISTS` |
+
+শর্তটা `course.offered_by`-এর ওপর, `student.dept`-এর ওপর না। তাই তিনটা টেবিলই লাগবে: `student` (নাম) → `registered` (সেতু) → `course` (`offered_by`)।
+
+### ধাপ ৩: হাতে উত্তর
+
+CSE-র কোর্স: CSE101, CSE205, CSE238, CSE311। এখন `registered` দেখে যারা এগুলোর অন্তত একটা নিয়েছে: Rafi (1), Nusrat (2), Tanvir (3), Mim (4), Sadia (6), Jubayer (7)। **মোট ৬ জন।** Imran আর Arif নেই, Farhana আর Labiba তো কিছুই নেয়নি।
+
+এই তালিকাটা মনে রাখো। Query লেখার পর এর সাথে মেলাব।
+
+### ধাপ ৪: ধাপে ধাপে বানাও
+
+প্রথমে শুধু জোড়া লাগাই আর দেখি কী আসে। কোনো শর্ত নেই, কোনো বাছাই নেই:
+
+<Run db="q1-course">
+```sql
+SELECT s.student_id, s.name, r.course_code, c.offered_by
+FROM student s
+JOIN registered r ON r.student_id = s.student_id
+JOIN course c     ON c.course_code = r.course_code
+ORDER BY s.student_id, r.course_code;
+```
+</Run>
+
+২৫টা Row, প্রতিটা রেজিস্ট্রেশন একটা লাইন। এবার শর্ত বসাই:
+
+<Run db="q1-course">
+```sql
+SELECT s.student_id, s.name, r.course_code
+FROM student s
+JOIN registered r ON r.student_id = s.student_id
+JOIN course c     ON c.course_code = r.course_code
+WHERE c.offered_by = 'CSE'
+ORDER BY s.student_id, r.course_code;
+```
+</Run>
+
+১৬টা Row। Rafi চারবার, Mim চারবার (CSE101 দুবার)। প্রশ্ন চেয়েছে প্রতিটা ছাত্র **একবার**, তাই শেষ ধাপে ডুপ্লিকেট সরাই।
+
+### উত্তর
+
+<Run db="q1-course">
+```sql
+SELECT DISTINCT s.student_id, s.name
+FROM student s
+JOIN registered r ON r.student_id = s.student_id
+JOIN course c     ON c.course_code = r.course_code
+WHERE c.offered_by = 'CSE'
+ORDER BY s.student_id;
+```
+</Run>
+
+| student_id | name |
+| --- | --- |
+| 1 | Rafi |
+| 2 | Nusrat |
+| 3 | Tanvir |
+| 4 | Mim |
+| 6 | Sadia |
+| 7 | Jubayer |
+
+হাতের উত্তরের সাথে হুবহু মিলেছে: ৬ জন।
+
+### আলোচনা
+
+**দ্বিতীয় উপায়: `EXISTS`।** "অন্তত একটা আছে কি না" সরাসরি এভাবেও লেখা যায়, আর এতে ডুপ্লিকেট হওয়ার সুযোগই নেই, কারণ বাইরের `FROM`-এ শুধু `student`:
+
+<Run db="q1-course">
+```sql
+SELECT s.student_id, s.name
+FROM student s
+WHERE EXISTS (
+  SELECT 1
+  FROM registered r
+  JOIN course c ON c.course_code = r.course_code
+  WHERE r.student_id = s.student_id
+    AND c.offered_by = 'CSE'
+)
+ORDER BY s.student_id;
+```
+</Run>
+
+একই ৬ জন। পরীক্ষায় যেটা তোমার কাছে পরিষ্কার লাগে সেটাই লেখো; দুটোই পূর্ণ নম্বর পাওয়ার মতো।
+
+<BugMonster title="(i)-এর ফাঁদ">
+
+**১. ভুল টেবিলের শর্ত।** `WHERE s.dept = 'CSE'` লিখলে প্রশ্নটা হয়ে যায় "CSE-র যে ছাত্ররা কোনো কোর্স নিয়েছে"। তখন Imran (শুধু BBA101) চলে আসে, আর Tanvir ও Sadia বাদ পড়ে। নিচে চালিয়ে দেখো।
+
+**২. `DISTINCT` ভুলে যাওয়া।** উত্তরে Rafi চারবার আসবে। Query "চলছে" বলেই সঠিক না।
+
+</BugMonster>
+
+<Run db="q1-course">
+```sql
+-- ভুল: শর্তটা ছাত্রের বিভাগের ওপর বসেছে
+SELECT DISTINCT s.student_id, s.name
+FROM student s
+JOIN registered r ON r.student_id = s.student_id
+WHERE s.dept = 'CSE'
+ORDER BY s.student_id;
+```
+</Run>
+
+Rafi, Nusrat, Mim, Jubayer, **Imran**: ৫ জন, আর Tanvir ও Sadia নেই। হাতের উত্তর আগে থেকে জানা ছিল বলেই ভুলটা এক নজরে ধরা পড়ল। এটাই ধাপ ৩-এর আসল কাজ।
+
+## (ii) Dr. Rahman-এর প্রতিটা কোর্স
+
+**দ্রুত পথ:** [এই প্রশ্নের টেমপ্লেট খোলো](/templates?p=division), নিজের নাম বসিয়ে চালাও। নিচে পুরো ভাঙা, ধাপে ধাপে।
+
+### ধাপ ১: নিজের ভাষায় বলো
+
+"Dr. Rahman যতগুলো কোর্স পড়ান, তার **সবগুলোতে** যে ছাত্র রেজিস্ট্রেশন করেছে।" একটাও বাদ থাকলে চলবে না।
+
+### ধাপ ২: শব্দ দাগাও
+
+| প্রশ্নের অংশ | মানে | SQL-এ |
+| --- | --- | --- |
+| "every course" | **সবগুলো** → Relational Division | দুইবার `NOT EXISTS`, বা গুনে মেলানো |
+| "taught by Dr. Rahman" | ভাজক (Divisor): কোন কোর্সগুলো | `course.instructor = 'Dr. Rahman'` |
+| "registered for" | ভাজ্য (Dividend): কে কী নিয়েছে | `registered` |
+
+"Every", "all", "প্রতিটা", "সবগুলো": এই শব্দ দেখলেই লেভেল ৪.৪-এর নকশা ৩। SQL-এ "সবগুলো" লেখার সরাসরি শব্দ নেই, তাই কৌশল হলো **উল্টো করে বলা**:
+
+> "Rahman-এর সব কোর্স নিয়েছে" = "Rahman-এর এমন কোনো কোর্স **নেই**, যেটা সে **নেয়নি**।"
+
+### ধাপ ৩: হাতে উত্তর
+
+আগে ভাজক: Dr. Rahman পড়ান **CSE101, CSE205, CSE238, MAT101**, মোট ৪টা। (MAT101 ভুলে যেয়ো না! আর PHY101 অন্যজনের।)
+
+এবার প্রতিটা ছাত্রের Rahman-কোর্স:
+
+| ছাত্র | Rahman-এর কোন কোর্স নিয়েছে | ৪টাই? |
+| --- | --- | --- |
+| Rafi | CSE101, CSE205, CSE238, MAT101 | হ্যাঁ |
+| Nusrat | CSE101, CSE205, CSE238 | না (MAT101 নেই) |
+| Tanvir | CSE101 | না |
+| Mim | CSE101 (দুবার), CSE205, CSE238 | না (MAT101 নেই) |
+| Arif | MAT101 | না |
+| Jubayer | CSE101, CSE205, CSE238, MAT101 | হ্যাঁ |
+
+উত্তর হবে **Rafi আর Jubayer**।
+
+### ধাপ ৪: ধাপে ধাপে বানাও
+
+বড় প্রশ্নকে দুটো ছোট প্রশ্নে ভাঙি। প্রথম ছোট প্রশ্ন: ভাজকটা আসলে কী?
+
+<Run db="q1-course">
+```sql
+SELECT course_code, title
+FROM course
+WHERE instructor = 'Dr. Rahman';
+```
+</Run>
+
+৪টা। দ্বিতীয় ছোট প্রশ্ন: **একজন** নির্দিষ্ট ছাত্রের (ধরো Nusrat, id 2) জন্য, Rahman-এর কোন কোর্স সে **নেয়নি**?
+
+<Run db="q1-course">
+```sql
+SELECT c.course_code
+FROM course c
+WHERE c.instructor = 'Dr. Rahman'
+  AND NOT EXISTS (
+    SELECT 1 FROM registered r
+    WHERE r.student_id = 2
+      AND r.course_code = c.course_code
+  );
+```
+</Run>
+
+MAT101। মানে Nusrat-এর জন্য এই তালিকা খালি না, তাই সে উত্তরে আসবে না। `2` বদলে `1` লিখে চালাও (বদলে দেখো): তালিকা খালি, তাই Rafi আসবে।
+
+এখন শুধু `2`-এর জায়গায় বাইরের প্রতিটা ছাত্র বসাই, আর শর্ত দিই "এই তালিকা খালি হতে হবে" (`NOT EXISTS`)। দুটো ছোট Query জুড়ে বড়টা হয়ে গেল।
+
+### উত্তর
+
+<Run db="q1-course">
+```sql
+SELECT s.student_id, s.name
+FROM student s
+WHERE NOT EXISTS (                 -- এমন কোনো Rahman-কোর্স নেই...
+  SELECT 1
+  FROM course c
+  WHERE c.instructor = 'Dr. Rahman'
+    AND NOT EXISTS (               -- ...যেটা এই ছাত্র নেয়নি
+      SELECT 1
+      FROM registered r
+      WHERE r.student_id  = s.student_id
+        AND r.course_code = c.course_code
+    )
+)
+ORDER BY s.student_id;
+```
+</Run>
+
+| student_id | name |
+| --- | --- |
+| 1 | Rafi |
+| 7 | Jubayer |
+
+### আলোচনা
+
+**দ্বিতীয় উপায়: গুনে মেলানো।** "Rahman-এর যতগুলো কোর্স, ঠিক ততগুলো আলাদা Rahman-কোর্স যে নিয়েছে":
+
+<Run db="q1-course">
+```sql
+SELECT s.student_id, s.name
+FROM student s
+JOIN registered r ON r.student_id = s.student_id
+JOIN course c     ON c.course_code = r.course_code
+WHERE c.instructor = 'Dr. Rahman'
+GROUP BY s.student_id, s.name
+HAVING COUNT(DISTINCT r.course_code) =
+       (SELECT COUNT(*) FROM course WHERE instructor = 'Dr. Rahman')
+ORDER BY s.student_id;
+```
+</Run>
+
+একই উত্তর। পড়তে সহজ, কিন্তু এখানে `DISTINCT` না দিলে কী হয় দেখো:
+
+<Run db="q1-course">
+```sql
+-- ভুল: রিটেক দুবার গোনা হচ্ছে
+SELECT s.student_id, s.name, COUNT(*) AS rahman_rows
+FROM student s
+JOIN registered r ON r.student_id = s.student_id
+JOIN course c     ON c.course_code = r.course_code
+WHERE c.instructor = 'Dr. Rahman'
+GROUP BY s.student_id, s.name
+HAVING COUNT(*) = (SELECT COUNT(*) FROM course WHERE instructor = 'Dr. Rahman')
+ORDER BY s.student_id;
+```
+</Run>
+
+**Mim** ঢুকে গেল! তার Rahman-রেজিস্ট্রেশন ৪টা Row (CSE101 দুবার), কিন্তু আলাদা কোর্স মাত্র ৩টা। এজন্যই ডেটায় একটা রিটেক রাখা: Primary Key-তে `semester` থাকা মানেই একই কোর্স দুবার আসতে পারে।
+
+<BugMonster title="(ii)-এর ফাঁদ">
+
+**১. `COUNT(*)` দিয়ে গোনা।** ওপরে দেখলে: রিটেকে ভুল উত্তর। সবসময় `COUNT(DISTINCT r.course_code)`।
+
+**২. `LIKE '%Rahman%'`।** "Dr. Mizanur Rahman"-ও মিলে যায়, ভাজক হয়ে যায় ৫টা কোর্স, আর উত্তর বদলে শুধু Jubayer (সে PHY101-ও নিয়েছে)। নামে পুরো মিল চাইলে `=`।
+
+**৩. ভাজকে বাড়তি শর্ত।** "Rahman-এর CSE কোর্স" ভেবে `AND c.offered_by = 'CSE'` দিলে MAT101 বাদ পড়ে, আর Nusrat আর Mim-ও চলে আসে। প্রশ্নে বিভাগের কথা নেই।
+
+**৪. খালি ভাজক।** Rahman যদি কোনো কোর্সই না পড়াতেন, দুইবার-`NOT EXISTS` **সব ১০ জনকে** দিত ("এমন কোনো কোর্স নেই যেটা নেয়নি" সবার জন্য সত্য), আর গোনার উপায় দিত **শূন্য জন**। পরীক্ষার খাতায় এক লাইনে এটা লিখে রাখলে বাড়তি নম্বর আসতে পারে।
+
+</BugMonster>
+
+## (iii) শূন্যসহ গড়
+
+**দ্রুত পথ:** [এই প্রশ্নের টেমপ্লেট খোলো](/templates?p=avg-zero), নিজের নাম বসিয়ে চালাও। নিচে পুরো ভাঙা, ধাপে ধাপে।
+
+### ধাপ ১: নিজের ভাষায় বলো
+
+"প্রতি ছাত্র গড়ে কয়টা কোর্সে রেজিস্ট্রেশন করেছে?" আর প্রশ্ন নিজেই সাবধান করে দিয়েছে: যে কিছুই নেয়নি, সে `registered`-এ নেই, কিন্তু তাকেও **০ ধরে** গড়ে গুনতে হবে। আউটপুট একটাই সংখ্যা।
+
+### ধাপ ২: শব্দ দাগাও
+
+| প্রশ্নের অংশ | মানে | SQL-এ |
+| --- | --- | --- |
+| "per student" | প্রথমে প্রতি ছাত্রের সংখ্যা | `GROUP BY s.student_id` |
+| "average" | তারপর সেই সংখ্যাগুলোর গড় | বাইরে `AVG(...)` |
+| "must still be counted" | যাদের কিছু নেই তারাও | `student` থেকে **`LEFT JOIN`** |
+
+এটা **দুই তলার** প্রশ্ন: ভেতরে প্রতি ছাত্রে একটা সংখ্যা, বাইরে সেগুলোর গড়। গড়ের গড় না, গোনার গড়।
+
+### ধাপ ৩: হাতে উত্তর
+
+| ছাত্র | রেজিস্ট্রেশন |
+| --- | --- |
+| Rafi | 5 |
+| Nusrat | 3 |
+| Tanvir | 2 |
+| Mim | 4 |
+| Arif | 2 |
+| Sadia | 3 |
+| Jubayer | 5 |
+| Imran | 1 |
+| Farhana | 0 |
+| Labiba | 0 |
+
+মোট ২৫, ছাত্র ১০ জন, গড় **২.৫**। (Farhana আর Labiba বাদ দিলে হতো ২৫ ÷ ৮ = ৩.১২৫। এই ভুলটাই প্রশ্ন ধরতে চাইছে।)
+
+### ধাপ ৪: ধাপে ধাপে বানাও
+
+ভেতরের তলা আগে: প্রতি ছাত্রের সংখ্যা, সবাইকে রেখে।
+
+<Run db="q1-course">
+```sql
+SELECT s.student_id, s.name, COUNT(r.course_code) AS num_courses
+FROM student s
+LEFT JOIN registered r ON r.student_id = s.student_id
+GROUP BY s.student_id, s.name
+ORDER BY s.student_id;
+```
+</Run>
+
+১০টা Row, Farhana আর Labiba-র পাশে ০। হাতের টেবিলের সাথে মিলিয়ে নাও। এবার এটাকে একটা Derived Table বানিয়ে বাইরে গড়:
+
+### উত্তর
+
+<Run db="q1-course">
+```sql
+SELECT AVG(num_courses) AS avg_courses_per_student
+FROM (
+  SELECT s.student_id, COUNT(r.course_code) AS num_courses
+  FROM student s
+  LEFT JOIN registered r ON r.student_id = s.student_id
+  GROUP BY s.student_id
+) AS per_student;
+```
+</Run>
+
+| avg_courses_per_student |
+| --- |
+| 2.5000 |
+
+(MySQL `2.5000` দেখায়, ব্রাউজারের ইঞ্জিন `2.5`; মান একই।)
+
+### আলোচনা
+
+**দ্বিতীয় উপায়: সরাসরি ভাগ।** গড় মানে মোট ÷ সংখ্যা, আর এখানে মোট হলো `registered`-এর Row সংখ্যা, সংখ্যা হলো `student`-এর Row সংখ্যা:
+
+<Run db="q1-course">
+```sql
+SELECT (SELECT COUNT(*) FROM registered) * 1.0
+     / (SELECT COUNT(*) FROM student) AS avg_courses_per_student;
+```
+</Run>
+
+২.৫। ছোট আর পরিষ্কার। `* 1.0` কেন? MySQL-এ `25 / 10` নিজেই `2.5000` দেয়, কিন্তু SQLite, PostgreSQL আর SQL Server-এ পূর্ণসংখ্যা ÷ পূর্ণসংখ্যা = পূর্ণসংখ্যা (`2`)। `* 1.0` সব জায়গায় নিরাপদ।
+
+**"কোর্স" নাকি "রেজিস্ট্রেশন"?** Mim CSE101 দুবার নিয়েছে। "কয়টা কোর্সে রেজিস্ট্রেশন" বলতে যদি **আলাদা কোর্স** বোঝাও, তাহলে Mim-এর ৪ না, ৩, আর গড় ২.৪:
+
+<Run db="q1-course">
+```sql
+SELECT AVG(num_courses) AS avg_distinct_courses
+FROM (
+  SELECT s.student_id, COUNT(DISTINCT r.course_code) AS num_courses
+  FROM student s
+  LEFT JOIN registered r ON r.student_id = s.student_id
+  GROUP BY s.student_id
+) AS per_student;
+```
+</Run>
+
+প্রশ্নে স্পষ্ট বলা নেই। খাতায় একটা লাইন লিখে দাও: "রিটেককে আলাদা রেজিস্ট্রেশন ধরা হয়েছে; আলাদা কোর্স গুনতে চাইলে `COUNT(DISTINCT r.course_code)`।" অস্পষ্ট প্রশ্নে **নিজের ধরে নেওয়াটা লিখে দেওয়া**ই পেশাদার অভ্যাস।
+
+<BugMonster title="(iii)-এর ফাঁদ">
+
+**১. `registered` থেকে শুরু করা।** `SELECT AVG(cnt) FROM (SELECT student_id, COUNT(*) cnt FROM registered GROUP BY student_id) t` দেয় **৩.১২৫**। Farhana আর Labiba হিসাবেই আসেনি। নিচে চালিয়ে দেখো।
+
+**২. `LEFT JOIN` দিয়ে `COUNT(*)`।** `LEFT JOIN` Farhana-কে রাখে ঠিকই, কিন্তু তার Row-টা `NULL`-ভরা, আর `COUNT(*)` সেটাকেও **১** গোনে। গড় হয়ে যায় ২.৭। গুনতে হবে ডান টেবিলের একটা Column: `COUNT(r.course_code)`, যেটা `NULL` বাদ দেয়।
+
+</BugMonster>
+
+<Run db="q1-course">
+```sql
+-- দুটো ভুল একসাথে, পাশাপাশি তুলনার জন্য
+SELECT
+  (SELECT AVG(cnt) FROM (SELECT student_id, COUNT(*) AS cnt
+                         FROM registered GROUP BY student_id) a) AS wrong_no_left_join,
+  (SELECT AVG(cnt) FROM (SELECT s.student_id, COUNT(*) AS cnt
+                         FROM student s LEFT JOIN registered r ON r.student_id = s.student_id
+                         GROUP BY s.student_id) b)               AS wrong_count_star,
+  (SELECT AVG(cnt) FROM (SELECT s.student_id, COUNT(r.course_code) AS cnt
+                         FROM student s LEFT JOIN registered r ON r.student_id = s.student_id
+                         GROUP BY s.student_id) c)               AS correct;
+```
+</Run>
+
+<Remember>
+**প্রশ্নে "যে কিছুই করেনি তাকেও গোনো" থাকলে:** যাদের গুনতে চাও সেই টেবিল থেকে শুরু করো (`FROM student`), `LEFT JOIN` দিয়ে কাজের টেবিল জোড়ো, আর `COUNT(ডান টেবিলের Column)` লেখো। তিনটার একটা বাদ গেলেই উত্তর ভুল।
+</Remember>
+
+## পুরো উত্তর এক জায়গায়
+
+খাতায় লেখার জন্য তিনটা উত্তর একসাথে:
+
+```sql
+-- (i)
+SELECT DISTINCT s.student_id, s.name
+FROM student s
+JOIN registered r ON r.student_id = s.student_id
+JOIN course c     ON c.course_code = r.course_code
+WHERE c.offered_by = 'CSE';
+
+-- (ii)
+SELECT s.student_id, s.name
+FROM student s
+WHERE NOT EXISTS (
+  SELECT 1 FROM course c
+  WHERE c.instructor = 'Dr. Rahman'
+    AND NOT EXISTS (
+      SELECT 1 FROM registered r
+      WHERE r.student_id = s.student_id
+        AND r.course_code = c.course_code));
+
+-- (iii)
+SELECT AVG(num_courses) AS avg_courses_per_student
+FROM (
+  SELECT s.student_id, COUNT(r.course_code) AS num_courses
+  FROM student s
+  LEFT JOIN registered r ON r.student_id = s.student_id
+  GROUP BY s.student_id
+) AS per_student;
+```
+
+<Quest id="1" title="কেউ নেয়নি এমন কোর্স">
+কোন কোর্সে এখনো কেউ রেজিস্ট্রেশন করেনি? (এই ডেটায় উত্তর খালি আসবে। কেন? তারপর `course`-এ একটা নতুন কোর্স `INSERT` করে আবার চালাও।)
+
+<Solution>
+```sql
+SELECT c.course_code, c.title
+FROM course c
+WHERE NOT EXISTS (SELECT 1 FROM registered r WHERE r.course_code = c.course_code);
+```
+
+এই ডেটায় ৮টা কোর্সের প্রতিটাতেই কেউ না কেউ আছে, তাই ০টা Row। খালি উত্তর মানেই ভুল Query না; হাতে মিলিয়ে দেখো। প্লেগ্রাউন্ডে আগে `INSERT INTO course VALUES ('CSE499', 'Thesis', 'Dr. Rahman', 'CSE');` চালিয়ে তারপর এই Query দিলে CSE499 আসবে। (আর মজার ব্যাপার: তখন (ii)-এর উত্তর **শূন্য** হয়ে যাবে, কারণ কেউ CSE499 নেয়নি।)
+</Solution>
+</Quest>
+
+<Quest id="2" title="প্রতি বিভাগের গড়">
+(iii)-এর মতোই, কিন্তু **প্রতিটা ছাত্র-বিভাগের** জন্য আলাদা গড় (শূন্যসহ)।
+
+<Solution>
+```sql
+SELECT dept, AVG(num_courses) AS avg_courses
+FROM (
+  SELECT s.student_id, s.dept, COUNT(r.course_code) AS num_courses
+  FROM student s
+  LEFT JOIN registered r ON r.student_id = s.student_id
+  GROUP BY s.student_id, s.dept
+) AS per_student
+GROUP BY dept
+ORDER BY dept;
+```
+
+BBA: (2 + 0) ÷ 2 = 1; CSE: (5 + 3 + 4 + 5 + 1) ÷ 5 = 3.6; EEE: (2 + 3 + 0) ÷ 3 ≈ 1.67। ভেতরের তলায় `dept` রেখে দিলেই বাইরে তার ওপর দল বাঁধা যায়।
+</Solution>
+</Quest>
+
+<Summary slug="level-5-2" />
+
+<Checkpoint questions={[
+  { q: "(i)-এ শর্তটা কোন Column-এর ওপর বসবে?", options: ["student.dept = 'CSE'", "course.offered_by = 'CSE'", "registered.semester = 'CSE'", "course.instructor = 'CSE'"], answer: 1, why: "\"course offered by CSE\": কোর্সের বিভাগ। ছাত্রের বিভাগে বসালে Imran ঢোকে, Tanvir আর Sadia বাদ পড়ে।" },
+  { q: "JOIN দিয়ে \"অন্তত একটা\" লিখলে DISTINCT কেন লাগে?", options: ["Query দ্রুত করতে", "একজন একাধিক মিলে-যাওয়া কোর্স নিলে তার নাম একাধিকবার আসে", "NULL সরাতে", "লাগে না"], answer: 1, why: "JOIN প্রতিটা মিলের জন্য একটা Row বানায়। EXISTS লিখলে এই সমস্যা হয় না।" },
+  { q: "(ii)-এ গুনে মেলানোর উপায়ে COUNT(*) দিলে Mim কেন ঢুকে যায়?", options: ["সে CSE-র ছাত্র", "CSE101 দুই সেমিস্টারে নেওয়ায় তার ৪টা Row, কিন্তু আলাদা কোর্স ৩টা", "সে MAT101 নিয়েছে", "ঢোকে না"], answer: 1, why: "COUNT(DISTINCT r.course_code) লিখলে ঠিক হয়।" },
+  { q: "\"সবগুলো\" প্রশ্নকে NOT EXISTS দিয়ে লিখতে কীভাবে উল্টো করে বলি?", options: ["এমন কোনো কোর্স আছে যেটা নিয়েছে", "এমন কোনো কোর্স নেই যেটা নেয়নি", "সব কোর্সের যোগফল", "কোর্স সংখ্যা > ০"], answer: 1, why: "দুটো \"না\", তাই দুটো NOT EXISTS।" },
+  { q: "(iii)-এ LEFT JOIN-এর পর COUNT(*) লিখলে Farhana কত গোনা হয়?", options: ["০", "১", "NULL", "Error"], answer: 1, why: "তার NULL-ভরা Row-টাও একটা Row। COUNT(r.course_code) NULL বাদ দেয়, তাই ০।" }
+]} />

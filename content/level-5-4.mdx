@@ -1,0 +1,557 @@
+<Mission>
+- অ্যাসাইনমেন্টের প্রশ্ন ৩ শূন্য থেকে
+- (i) "কখনো না" প্রশ্ন **Relational Algebra**-তে: বিয়োগ (−), আর কেন দুই পাশের Column মিলতে হয়
+- (ii) তিন শর্তের হিসাব: কোন শর্ত `WHERE`-এ, কোনটা `HAVING`-এ, আর বছরের সীমানা
+- (iii) "সবচেয়ে দামি" প্রশ্নকে দুটো ছোট প্রশ্নে ভাঙা, আর সমান দামের ফাঁদ
+</Mission>
+
+<Note title="শুরুর আগে: Database নামাও">
+খাতা: [q3-shop.sql](/sql/assignment/q3-shop.sql)। চালাও `mysql -u root -p < q3-shop.sql`, তারপর `USE asg_shop;` (phpMyAdmin হলে **Import**)। নিজের কম্পিউটারে কিছু না থাকলে প্রতিটা Query-র নিচের **চালাও** আর নিচের প্লেগ্রাউন্ড ব্যবহার করো।
+</Note>
+
+## প্রশ্ন
+
+> **3.** Consider the following online shop database:
+>
+> customer (<u>cust_id</u>, cname, city)<br />
+> product (<u>prod_id</u>, pname, category, price)<br />
+> orders (<u>order_id</u>, cust_id, prod_id, quantity, order_date)
+>
+> **(i)** Give an expression in the relational algebra to find the ID and name of each customer who has never placed an order.<br />
+> **(ii)** Write a SQL query to find the total sales amount (price × quantity) of each product category in the year 2025, showing only the categories whose total exceeds 50,000.<br />
+> **(iii)** Write a SQL query to find the name and city of each customer who has ordered the most expensive product in the shop.
+
+## Database চেনা
+
+### টেবিলের গঠন
+
+| টেবিল | Column | টাইপ | চাবি | মানে |
+| --- | --- | --- | --- | --- |
+| `customer` | `cust_id` | `INT` | PK | ক্রেতার নম্বর |
+| | `cname` | `VARCHAR(50)` | | নাম |
+| | `city` | `VARCHAR(50)` | | শহর |
+| `product` | `prod_id` | `INT` | PK | পণ্যের নম্বর |
+| | `pname` | `VARCHAR(80)` | | পণ্যের নাম |
+| | `category` | `VARCHAR(30)` | | ক্যাটাগরি |
+| | `price` | `DECIMAL(10,2)` | | **একটার** দাম |
+| `orders` | `order_id` | `INT` | PK | অর্ডারের নম্বর |
+| | `cust_id` | `INT` | FK → `customer` | কে দিয়েছেন |
+| | `prod_id` | `INT` | FK → `product` | কোন পণ্য |
+| | `quantity` | `INT` | | কয়টা |
+| | `order_date` | `DATE` | | কবে |
+
+একটা জিনিস খেয়াল করো: `orders`-এ টাকার অঙ্ক নেই। বিক্রির অঙ্ক = `product.price × orders.quantity`, তাই হিসাব করতে হলে দুটো টেবিল জোড়া লাগবেই।
+
+### সম্পর্ক
+
+<Flow steps={[
+  "customer.cust_id",
+  "orders (cust_id, prod_id)",
+  "product.prod_id"
+]} />
+
+প্রতিটা অর্ডারে একটাই পণ্য (এক লাইন)। এক ক্রেতা অনেক অর্ডার, এক পণ্য অনেক অর্ডারে।
+
+### পুরো ডেটা
+
+`customer` (৭ জন):
+
+| cust_id | cname | city |
+| --- | --- | --- |
+| 1 | Ayesha | Dhaka |
+| 2 | Bashir | Chattogram |
+| 3 | Chandni | Dhaka |
+| 4 | Dipu | Sylhet |
+| 5 | Emon | Khulna |
+| 6 | Farzana | Rajshahi |
+| 7 | Gias | Dhaka |
+
+`product` (১১টা):
+
+| prod_id | pname | category | price |
+| --- | --- | --- | --- |
+| 1 | Laptop Pro 14 | Electronics | 95000.00 |
+| 2 | Gaming Laptop X | Electronics | 95000.00 |
+| 3 | Smartphone A5 | Electronics | 28000.00 |
+| 4 | Wireless Earbuds | Electronics | 3500.00 |
+| 5 | Office Chair | Furniture | 12000.00 |
+| 6 | Study Table | Furniture | 9500.00 |
+| 7 | Bookshelf | Furniture | 7000.00 |
+| 8 | Cotton Panjabi | Clothing | 2500.00 |
+| 9 | Winter Jacket | Clothing | 4500.00 |
+| 10 | Microwave Oven | Appliances | 12500.00 |
+| 11 | Smart Watch | Electronics | 15000.00 |
+
+`orders` (১৫টা), তারিখ ধরে সাজানো:
+
+| order_id | cust_id | prod_id | quantity | order_date |
+| --- | --- | --- | --- | --- |
+| 15 | 5 | 9 | 4 | 2024-11-20 |
+| 11 | 4 | 2 | 1 | 2024-12-28 |
+| 1 | 1 | 1 | 1 | 2025-01-15 |
+| 2 | 2 | 3 | 2 | 2025-02-10 |
+| 3 | 3 | 5 | 2 | 2025-03-05 |
+| 4 | 1 | 8 | 4 | 2025-04-12 |
+| 5 | 4 | 6 | 3 | 2025-05-20 |
+| 6 | 5 | 9 | 3 | 2025-06-18 |
+| 14 | 1 | 2 | 1 | 2025-07-07 |
+| 7 | 2 | 7 | 2 | 2025-08-08 |
+| 8 | 3 | 4 | 2 | 2025-09-30 |
+| 9 | 4 | 10 | 4 | 2025-11-11 |
+| 10 | 5 | 8 | 6 | 2025-12-31 |
+| 12 | 3 | 6 | 2 | 2026-01-02 |
+| 13 | 2 | 1 | 1 | 2026-02-14 |
+
+### ডেটার ভেতরে লুকানো ফাঁদ
+
+- **Farzana** আর **Gias** কখনো অর্ডার দেননি।
+- **দুটো** পণ্যের দাম সর্বোচ্চ এবং সমান: Laptop Pro 14 আর Gaming Laptop X (৯৫,০০০)।
+- **Ayesha** দুটো দামি ল্যাপটপই কিনেছেন। **Dipu** কিনেছেন ২০২৪-এ, **Bashir** ২০২৬-এ।
+- **Appliances**-এর ২০২৫-এর মোট ঠিক ৫০,০০০। **Clothing** ২০২৫-এ ৫০,০০০ পার হয়নি, কিন্তু সব বছর মিলিয়ে হয়।
+- ২০২৫-এর একদম শেষ দিনের (12-31) আর ২০২৬-এর দ্বিতীয় দিনের অর্ডার আছে।
+- **Smart Watch** কেউ কেনেনি।
+
+<Playground db="q3-shop" />
+
+## (i) কখনো অর্ডার দেননি (Relational Algebra)
+
+**দ্রুত পথ:** [এই প্রশ্নের টেমপ্লেট খোলো](/templates?p=not-exists), নিজের নাম বসিয়ে চালাও। নিচে পুরো ভাঙা, ধাপে ধাপে।
+
+### ধাপ ১: নিজের ভাষায় বলো
+
+"যে ক্রেতাদের একটাও অর্ডার নেই, তাঁদের আইডি আর নাম।" আর লিখতে হবে **Relational Algebra**-তে, SQL-এ না।
+
+### ধাপ ২: শব্দ দাগাও
+
+| প্রশ্নের অংশ | মানে | Relational Algebra-তে |
+| --- | --- | --- |
+| "ID and name" | আউটপুটের Column | Projection: π<sub>cust_id, cname</sub> |
+| "each customer" | সব ক্রেতা থেকে শুরু | `customer` |
+| "never placed an order" | যাঁদের অর্ডার **আছে**, তাঁদের বাদ | বিয়োগ (Set Difference): **−** |
+
+"Never", "কখনো না", "একটাও না": এই শব্দ মানেই অনস্তিত্ব (লেভেল ৪.৪-এর নকশা ২)। Relational Algebra-তে "না" লেখার একটাই অস্ত্র: **বিয়োগ**। সবাই − যাঁদের আছে = যাঁদের নেই।
+
+### ধাপ ৩: হাতে উত্তর
+
+সব ক্রেতা: ১, ২, ৩, ৪, ৫, ৬, ৭। `orders`-এ যাঁদের `cust_id` আছে: ১, ২, ৩, ৪, ৫। বিয়োগ: **৬ (Farzana), ৭ (Gias)**।
+
+### ধাপ ৪: ধাপে ধাপে বানাও
+
+<Flow steps={[
+  "সব ক্রেতার আইডি: π cust_id (customer) → {1,2,3,4,5,6,7}",
+  "অর্ডার দেওয়া আইডি: π cust_id (orders) → {1,2,3,4,5}",
+  "বিয়োগ: π cust_id (customer) − π cust_id (orders) → {6,7}",
+  "নাম পেতে customer-এর সাথে জোড়া: (ফলাফল) ⋈ customer",
+  "শেষে: π cust_id, cname"
+]} />
+
+বিয়োগের আগে **দুই পাশ থেকেই শুধু `cust_id`** নিলাম। কেন? বিয়োগ (আর ∪, ∩) শুধু তখনই চলে যখন দুই পাশের Column-এর সংখ্যা আর ধরন এক। একে বলে **Union Compatibility**। `π cust_id, cname (customer) − π cust_id (orders)` লেখা **অবৈধ**: বাঁ পাশে দুটো Column, ডান পাশে একটা। তাই আগে শুধু আইডিতে বিয়োগ, তারপর Natural Join (⋈) দিয়ে নাম ফিরিয়ে আনা।
+
+### উত্তর
+
+<div className="brut-sm bg-yellow-soft px-5 py-4 text-center font-code text-lg leading-loose">
+  π<sub>cust_id, cname</sub> ( customer ⋈ ( π<sub>cust_id</sub>(customer) − π<sub>cust_id</sub>(orders) ) )
+</div>
+
+ধাপে ধাপে লিখতে চাইলে (খাতায় এটা আরো পরিষ্কার দেখায়):
+
+```text
+r1 ← π cust_id (customer)
+r2 ← π cust_id (orders)
+r3 ← r1 − r2
+result ← π cust_id, cname (r3 ⋈ customer)
+```
+
+### আলোচনা
+
+**আরেকটা বৈধ রূপ:** যাঁদের অর্ডার আছে, তাঁদের আইডি আর নাম বের করে পুরো তালিকা থেকে বিয়োগ। এবার দুই পাশেই দুটো Column, তাই বৈধ:
+
+<div className="brut-sm bg-card px-5 py-4 text-center font-code text-lg leading-loose">
+  π<sub>cust_id, cname</sub>(customer) − π<sub>cust_id, cname</sub>(customer ⋈ orders)
+</div>
+
+**এই Algebra-টা SQL-এ চালিয়ে দেখি।** প্রশ্ন SQL চায়নি, কিন্তু নিজের উত্তর যাচাই করতে Algebra-কে হুবহু SQL-এ অনুবাদ করা যায়। বিয়োগ (−) মানে SQL-এর `EXCEPT` (MySQL 8.0.31 থেকে, MariaDB 10.3 থেকে):
+
+<Run db="q3-shop">
+```sql
+-- π cust_id, cname (customer ⋈ (π cust_id (customer) − π cust_id (orders)))
+SELECT c.cust_id, c.cname
+FROM customer c
+JOIN (
+  SELECT cust_id FROM customer
+  EXCEPT
+  SELECT cust_id FROM orders
+) r3 ON r3.cust_id = c.cust_id
+ORDER BY c.cust_id;
+```
+</Run>
+
+| cust_id | cname |
+| --- | --- |
+| 6 | Farzana |
+| 7 | Gias |
+
+আর প্রতিদিনের SQL-এ একই কথা সবচেয়ে বেশি লেখা হয় `NOT EXISTS` দিয়ে:
+
+<Run db="q3-shop">
+```sql
+SELECT c.cust_id, c.cname
+FROM customer c
+WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.cust_id = c.cust_id)
+ORDER BY c.cust_id;
+```
+</Run>
+
+| Relational Algebra | SQL |
+| --- | --- |
+| π<sub>cols</sub>(R) | `SELECT DISTINCT cols FROM R` |
+| σ<sub>শর্ত</sub>(R) | `WHERE শর্ত` |
+| R ⋈ S | `JOIN ... ON` (একই নামের Column-এ) |
+| R − S | `EXCEPT`, বা `NOT EXISTS` / `LEFT JOIN ... IS NULL` |
+
+<BugMonster title="(i)-এর ফাঁদ">
+
+**১. Union Compatibility ভাঙা।** `π cust_id, cname (customer) − π cust_id (orders)`: দুই পাশের Column আলাদা, তাই বিয়োগ অর্থহীন। পরীক্ষায় এটাই সবচেয়ে বেশি কাটা যায়।
+
+**২. σ দিয়ে "না" লেখার চেষ্টা।** `σ cust_id ≠ orders.cust_id (customer × orders)`: এটা "অন্তত একটা অর্ডার আছে যেটা তাঁর না", মানে প্রায় সবাই। এক Row ধরে "না" মিলিয়ে "কোথাও নেই" পাওয়া যায় না; সেজন্যই বিয়োগ।
+
+**৩. প্রশ্ন Algebra চেয়েছে, SQL লিখে দেওয়া।** উত্তরে SQL দিলে নম্বর কাটা যেতে পারে। Algebra লেখো; SQL শুধু নিজের যাচাইয়ের জন্য।
+
+</BugMonster>
+
+## (ii) ২০২৫-এ ক্যাটাগরি অনুযায়ী বিক্রি, ৫০,০০০-এর বেশি
+
+**দ্রুত পথ:** [এই প্রশ্নের টেমপ্লেট খোলো](/templates?p=group-having), নিজের নাম বসিয়ে চালাও। নিচে পুরো ভাঙা, ধাপে ধাপে।
+
+### ধাপ ১: নিজের ভাষায় বলো
+
+"শুধু ২০২৫ সালের অর্ডার নিয়ে, প্রতিটা ক্যাটাগরিতে মোট কত টাকার বিক্রি (দাম × পরিমাণ) হয়েছে বের করো; যেসব ক্যাটাগরির মোট ৫০,০০০-এর **বেশি**, শুধু সেগুলো দেখাও।" প্রতিটা Row = একটা **ক্যাটাগরি**।
+
+### ধাপ ২: শব্দ দাগাও
+
+| প্রশ্নের অংশ | মানে | SQL-এ |
+| --- | --- | --- |
+| "price × quantity" | দুই টেবিলের Column | `orders JOIN product`, তারপর `p.price * o.quantity` |
+| "total ... of each product category" | ক্যাটাগরি ধরে দল, তারপর যোগ | `GROUP BY p.category`, `SUM(...)` |
+| "in the year 2025" | **প্রতিটা অর্ডারের** শর্ত (দলের আগে) | `WHERE o.order_date ...` |
+| "only the categories whose total exceeds 50,000" | **দলের** শর্ত (যোগের পরে) | `HAVING SUM(...) > 50000` |
+
+এটাই এই প্রশ্নের মূল শিক্ষা: **কোন শর্ত কখন খাটবে।** তারিখটা একেকটা অর্ডারের গুণ, তাই যোগ করার **আগে** ছাঁকতে হবে (`WHERE`)। মোট ৫০,০০০ হলো একটা দলের গুণ, যেটা যোগ করার **পরেই** জানা যায় (`HAVING`)। লেভেল ৮-এর ক্রম মনে করো: `FROM → WHERE → GROUP BY → HAVING → SELECT`।
+
+### ধাপ ৩: হাতে উত্তর
+
+শুধু ২০২৫-এর ১১টা অর্ডার, প্রতিটার অঙ্ক:
+
+| ক্যাটাগরি | অর্ডার (দাম × পরিমাণ) | মোট |
+| --- | --- | --- |
+| Electronics | #1: 95000×1, #2: 28000×2, #8: 3500×2, #14: 95000×1 | 253000 |
+| Furniture | #3: 12000×2, #5: 9500×3, #7: 7000×2 | 66500 |
+| Clothing | #4: 2500×4, #6: 4500×3, #10: 2500×6 | 38500 |
+| Appliances | #9: 12500×4 | 50000 |
+
+৫০,০০০-এর **বেশি**: **Electronics, Furniture**। Appliances ঠিক ৫০,০০০, তাই বাদ।
+
+### ধাপ ৪: ধাপে ধাপে বানাও
+
+প্রথমে শুধু জোড়া, ছাঁকা আর প্রতিটা অর্ডারের অঙ্ক। এখনো কোনো দল নেই:
+
+<Run db="q3-shop">
+```sql
+SELECT o.order_id, o.order_date, p.category, p.price, o.quantity,
+       p.price * o.quantity AS amount
+FROM orders o
+JOIN product p ON p.prod_id = o.prod_id
+WHERE o.order_date >= '2025-01-01'
+  AND o.order_date <  '2026-01-01'
+ORDER BY p.category, o.order_id;
+```
+</Run>
+
+১১টা Row, প্রতিটার অঙ্ক হাতের টেবিলের সাথে মিলিয়ে নাও। 2025-12-31-এর অর্ডার (#10) আছে, 2026-01-02-এরটা (#12) নেই: সীমানা ঠিক। এবার দল বাঁধি, এখনো `HAVING` ছাড়া:
+
+<Run db="q3-shop">
+```sql
+SELECT p.category, SUM(p.price * o.quantity) AS total_sales
+FROM orders o
+JOIN product p ON p.prod_id = o.prod_id
+WHERE o.order_date >= '2025-01-01'
+  AND o.order_date <  '2026-01-01'
+GROUP BY p.category
+ORDER BY total_sales DESC;
+```
+</Run>
+
+চারটা ক্যাটাগরি, হাতের মোটের সাথে মিলেছে। শেষ ধাপে দলের শর্ত:
+
+### উত্তর
+
+<Run db="q3-shop">
+```sql
+SELECT p.category, SUM(p.price * o.quantity) AS total_sales
+FROM orders o
+JOIN product p ON p.prod_id = o.prod_id
+WHERE o.order_date >= '2025-01-01'
+  AND o.order_date <  '2026-01-01'
+GROUP BY p.category
+HAVING SUM(p.price * o.quantity) > 50000
+ORDER BY total_sales DESC;
+```
+</Run>
+
+| category | total_sales |
+| --- | --- |
+| Electronics | 253000.00 |
+| Furniture | 66500.00 |
+
+### আলোচনা
+
+**বছর লেখার তিন রকম:**
+
+| লেখা | ঠিক? | মন্তব্য |
+| --- | --- | --- |
+| `o.order_date >= '2025-01-01' AND o.order_date < '2026-01-01'` | হ্যাঁ | সবচেয়ে ভালো: Index কাজে লাগে, আর `DATETIME` হলেও শেষ দিনের সব সময় ধরে |
+| `YEAR(o.order_date) = 2025` | হ্যাঁ | পড়তে সহজ, পরীক্ষায় পূর্ণ নম্বর; কিন্তু Column-কে Function-এ মুড়ায় Index কাজ করে না (লেভেল ১৬) |
+| `o.order_date BETWEEN '2025-01-01' AND '2025-12-31'` | এখানে হ্যাঁ | `DATE`-এ ঠিক; Column `DATETIME` হলে `2025-12-31 14:30` বাদ পড়ে যায় |
+
+`YEAR()` দিয়েও চালিয়ে দেখো, একই উত্তর আসবে (এই পাতার ইঞ্জিনেও `YEAR` চলে):
+
+<Run db="q3-shop">
+```sql
+SELECT p.category, SUM(p.price * o.quantity) AS total_sales
+FROM orders o
+JOIN product p ON p.prod_id = o.prod_id
+WHERE YEAR(o.order_date) = 2025
+GROUP BY p.category
+HAVING total_sales > 50000;
+```
+</Run>
+
+এখানে `HAVING total_sales > 50000`, মানে `SELECT`-এর Alias দিয়ে লেখা: MySQL এটা মেনে নেয় (স্ট্যান্ডার্ড SQL-এ নিষেধ, তাই খাতায় পুরো `SUM(...)` লেখাই নিরাপদ)।
+
+<BugMonster title="(ii)-এর ফাঁদ">
+
+**১. যোগফল `WHERE`-এ।** `WHERE SUM(p.price * o.quantity) > 50000` → `ERROR 1111: Invalid use of group function`। `WHERE` চলার সময় যোগফল এখনো তৈরিই হয়নি।
+
+**২. বছরের শর্ত ভুলে যাওয়া।** তাহলে সব বছরের যোগ আসে, আর **Clothing** (মোট ৫৬,৫০০) ভুল করে ঢুকে যায়। নিচে চালিয়ে দেখো।
+
+**৩. বছরের শর্ত `HAVING`-এ।** `HAVING YEAR(o.order_date) = 2025`: দলের ভেতরে অনেক তারিখ, কোনটা দেখবে? MySQL হয় error দেয় (`ONLY_FULL_GROUP_BY`), নয়তো যেকোনো একটা Row-এর তারিখ দেখে চুপচাপ ভুল উত্তর দেয়। Row-এর শর্ত সবসময় `WHERE`-এ।
+
+**৪. `>=` লেখা।** "exceeds" মানে বেশি। `>=` দিলে Appliances (ঠিক ৫০,০০০) চলে আসে।
+
+**৫. `SUM(p.price) * SUM(o.quantity)`।** যোগফলের গুণ আর গুণফলের যোগ এক না। প্রতিটা অর্ডারে আগে গুণ, তারপর যোগ: `SUM(p.price * o.quantity)`।
+
+</BugMonster>
+
+<Run db="q3-shop">
+```sql
+-- ভুল: বছরের শর্ত নেই
+SELECT p.category, SUM(p.price * o.quantity) AS total_sales
+FROM orders o
+JOIN product p ON p.prod_id = o.prod_id
+GROUP BY p.category
+HAVING SUM(p.price * o.quantity) > 50000
+ORDER BY total_sales DESC;
+```
+</Run>
+
+## (iii) সবচেয়ে দামি পণ্যের ক্রেতা
+
+**দ্রুত পথ:** [এই প্রশ্নের টেমপ্লেট খোলো](/templates?p=exists), নিজের নাম বসিয়ে চালাও। নিচে পুরো ভাঙা, ধাপে ধাপে।
+
+### ধাপ ১: নিজের ভাষায় বলো
+
+"দোকানের সবচেয়ে দামি পণ্য কোনটা? যাঁরা সেটা (কখনো, যেকোনো বছরে) অর্ডার করেছেন, তাঁদের নাম আর শহর।" প্রতিটা Row = একজন ক্রেতা, একবার।
+
+### ধাপ ২: শব্দ দাগাও আর ছোট প্রশ্নে ভাঙো
+
+এই প্রশ্নে আসলে **তিনটা** ছোট প্রশ্ন একটার ভেতরে আরেকটা:
+
+1. সর্বোচ্চ দাম কত? → `SELECT MAX(price) FROM product`
+2. কোন পণ্য(গুলো)র দাম সেটা? → `WHERE price = (১-এর উত্তর)`
+3. কারা সেগুলো অর্ডার করেছেন? → `orders`-এ `prod_id` মেলাও, তারপর `customer` থেকে নাম-শহর
+
+"the most expensive product" একবচনে লেখা, কিন্তু সর্বোচ্চ দামে **একাধিক** পণ্য থাকতেই পারে। এই ডেটায় আছে দুটো।
+
+### ধাপ ৩: হাতে উত্তর
+
+সর্বোচ্চ দাম ৯৫,০০০: পণ্য ১ (Laptop Pro 14) আর ২ (Gaming Laptop X)। `orders`-এ এ দুটো যাঁরা কিনেছেন: Ayesha (#1: পণ্য ১, #14: পণ্য ২), Dipu (#11: পণ্য ২), Bashir (#13: পণ্য ১)। উত্তর: **Ayesha (Dhaka), Bashir (Chattogram), Dipu (Sylhet)**, প্রত্যেকে একবার।
+
+### ধাপ ৪: ধাপে ধাপে বানাও
+
+ছোট প্রশ্ন ১ আর ২ একসাথে:
+
+<Run db="q3-shop">
+```sql
+SELECT prod_id, pname, price
+FROM product
+WHERE price = (SELECT MAX(price) FROM product);
+```
+</Run>
+
+দুটো পণ্য। ছোট প্রশ্ন ৩-এর জন্য এটাকে `IN (...)`-এর ভেতরে বসাই, কারণ উত্তর একাধিক হতে পারে (`=` দিলে MySQL বলত `Subquery returns more than 1 row`):
+
+<Run db="q3-shop">
+```sql
+SELECT c.cname, c.city, o.order_id, o.prod_id
+FROM customer c
+JOIN orders o ON o.cust_id = c.cust_id
+WHERE o.prod_id IN (
+  SELECT prod_id FROM product
+  WHERE price = (SELECT MAX(price) FROM product)
+)
+ORDER BY c.cust_id;
+```
+</Run>
+
+চারটা Row: Ayesha দুবার (দুটো ল্যাপটপই কিনেছেন)। প্রশ্ন চায় "each customer" একবার, আর শুধু নাম-শহর।
+
+### উত্তর
+
+<Run db="q3-shop">
+```sql
+SELECT c.cname, c.city
+FROM customer c
+WHERE EXISTS (
+  SELECT 1
+  FROM orders o
+  WHERE o.cust_id = c.cust_id
+    AND o.prod_id IN (
+      SELECT prod_id FROM product
+      WHERE price = (SELECT MAX(price) FROM product)
+    )
+)
+ORDER BY c.cust_id;
+```
+</Run>
+
+| cname | city |
+| --- | --- |
+| Ayesha | Dhaka |
+| Bashir | Chattogram |
+| Dipu | Sylhet |
+
+`EXISTS` বাইরে শুধু `customer` রাখে, তাই ডুপ্লিকেটের প্রশ্নই নেই। ধাপ ৪-এর JOIN-রূপে `SELECT DISTINCT c.cname, c.city` লিখলেও একই উত্তর; তবে একই নাম-শহরের দুজন আলাদা ক্রেতা থাকলে `DISTINCT` তাঁদের এক করে ফেলত, `EXISTS` ফেলত না।
+
+### আলোচনা
+
+**তিন তলাকে JOIN দিয়ে সমতল করা:** একই কাজ সব টেবিল একসাথে জুড়ে:
+
+<Run db="q3-shop">
+```sql
+SELECT DISTINCT c.cust_id, c.cname, c.city
+FROM customer c
+JOIN orders  o ON o.cust_id = c.cust_id
+JOIN product p ON p.prod_id = o.prod_id
+WHERE p.price = (SELECT MAX(price) FROM product)
+ORDER BY c.cust_id;
+```
+</Run>
+
+এখানে `cust_id`-ও `SELECT`-এ রাখলাম, যাতে `DISTINCT` একই নামের দুজনকে মিশিয়ে না ফেলে।
+
+<BugMonster title="(iii)-এর ফাঁদ">
+
+**১. `ORDER BY price DESC LIMIT 1`।** সমান দামের দুটো পণ্য থাকলে একটা চুপচাপ বাদ পড়ে, আর সেটার ক্রেতাও। নিচের ভুল Query চালিয়ে দেখো: তিনজনের জায়গায় দুজন।
+
+**২. `= (SELECT prod_id ...)`।** দুটো পণ্য ফেরত এলে `ERROR 1242: Subquery returns more than 1 row`। একাধিক মান সম্ভব হলে `IN`।
+
+**৩. (ii)-এর বছর এখানেও বসানো।** এই প্রশ্নে কোনো সময়ের কথা নেই। ২০২৫ দিয়ে ছাঁকলে Dipu (২০২৪) আর Bashir (২০২৬) দুজনেই বাদ পড়েন। আগের উপ-প্রশ্নের শর্ত পরেরটায় টেনে আনা পরীক্ষার খুব সাধারণ ভুল।
+
+**৪. "সবচেয়ে বেশি টাকার অর্ডার" ভেবে ফেলা।** প্রশ্ন বলেছে সবচেয়ে **দামি পণ্য** (`price`), সবচেয়ে বড় অর্ডার (`price × quantity`) না।
+
+</BugMonster>
+
+<Run db="q3-shop">
+```sql
+-- ভুল: LIMIT 1 সমান দামের দ্বিতীয় পণ্যটা ফেলে দেয়
+SELECT DISTINCT c.cname, c.city
+FROM customer c
+JOIN orders o ON o.cust_id = c.cust_id
+WHERE o.prod_id = (SELECT prod_id FROM product ORDER BY price DESC LIMIT 1);
+```
+</Run>
+
+দুজন। আর **কোন** দুজন, সেটাও নিশ্চিত না: সমান দামে কোন ল্যাপটপ "প্রথম", তা ইঞ্জিন নিজের মতো ঠিক করে। এই পাতার ইঞ্জিনে Dipu হারান; একই Query MariaDB-তে চালিয়ে দেখেছি, সেখানে হারান Bashir। যে উত্তর চালানো ভেদে বদলায়, সেটা উত্তরই না।
+
+<Remember>
+**"সবচেয়ে বেশি/কম" প্রশ্নে `LIMIT 1` না, `= (SELECT MAX(...))`।** সমান মান থাকলে `LIMIT 1` একজনকে চুপচাপ বাদ দেয়, আর ফলাফলে কোনো error থাকে না যে ধরবে।
+</Remember>
+
+## পুরো উত্তর এক জায়গায়
+
+```text
+(i)  π cust_id, cname ( customer ⋈ ( π cust_id (customer) − π cust_id (orders) ) )
+```
+
+```sql
+-- (ii)
+SELECT p.category, SUM(p.price * o.quantity) AS total_sales
+FROM orders o
+JOIN product p ON p.prod_id = o.prod_id
+WHERE o.order_date >= '2025-01-01'
+  AND o.order_date <  '2026-01-01'
+GROUP BY p.category
+HAVING SUM(p.price * o.quantity) > 50000;
+
+-- (iii)
+SELECT c.cname, c.city
+FROM customer c
+WHERE EXISTS (
+  SELECT 1 FROM orders o
+  WHERE o.cust_id = c.cust_id
+    AND o.prod_id IN (SELECT prod_id FROM product
+                      WHERE price = (SELECT MAX(price) FROM product)));
+```
+
+<Quest id="1" title="কেউ কেনেনি এমন পণ্য, Algebra-তে">
+কোন পণ্য কেউ কখনো অর্ডার করেনি? Relational Algebra-তে লেখো, তারপর SQL-এ অনুবাদ করে চালাও।
+
+<Solution>
+```text
+π prod_id, pname ( product ⋈ ( π prod_id (product) − π prod_id (orders) ) )
+```
+
+```sql
+SELECT p.prod_id, p.pname
+FROM product p
+JOIN (SELECT prod_id FROM product
+      EXCEPT
+      SELECT prod_id FROM orders) x ON x.prod_id = p.prod_id;
+```
+
+শুধু Smart Watch (১১)। (i)-এর হুবহু একই নকশা, শুধু টেবিল বদলেছে: একবার নকশা চিনলে বাকিগুলো একই ছাঁচে।
+</Solution>
+</Quest>
+
+<Quest id="2" title="প্রতি শহরে ২০২৫-এর সেরা ক্রেতা">
+প্রতিটা শহরে ২০২৫ সালে সবচেয়ে বেশি টাকা খরচ করা ক্রেতা কে? (সমান হলে দুজনই।)
+
+<Solution>
+```sql
+WITH spent AS (
+  SELECT c.cust_id, c.cname, c.city, SUM(p.price * o.quantity) AS total
+  FROM customer c
+  JOIN orders  o ON o.cust_id = c.cust_id
+  JOIN product p ON p.prod_id = o.prod_id
+  WHERE o.order_date >= '2025-01-01' AND o.order_date < '2026-01-01'
+  GROUP BY c.cust_id, c.cname, c.city
+)
+SELECT city, cname, total
+FROM spent s
+WHERE total = (SELECT MAX(total) FROM spent s2 WHERE s2.city = s.city)
+ORDER BY city;
+```
+
+Chattogram: Bashir (৭০,০০০), Dhaka: Ayesha (২,০০,০০০), Khulna: Emon (২৮,৫০০), Sylhet: Dipu (৭৮,৫০০)। ছোট প্রশ্নে ভাঙা: (১) প্রতি ক্রেতার ২০২৫-এর খরচ, CTE-তে নাম দিয়ে রাখা; (২) সেখান থেকে "নিজের শহরের সর্বোচ্চ"-এর সাথে তুলনা, প্রশ্ন ২-এর (i)-এর হুবহু নকশা।
+</Solution>
+</Quest>
+
+<Summary slug="level-5-4" />
+
+<Checkpoint questions={[
+  { q: "Relational Algebra-তে \"কখনো অর্ডার দেননি\" লিখতে কোন অপারেশন?", options: ["σ (Selection)", "− (Set Difference)", "× (Cartesian Product)", "∪ (Union)"], answer: 1, why: "সবাই − যাঁদের অর্ডার আছে। Algebra-তে \"না\" বলার উপায় এটাই।" },
+  { q: "π cust_id, cname (customer) − π cust_id (orders) কেন অবৈধ?", options: ["নাম ভুল", "দুই পাশের Column সংখ্যা আলাদা (Union Compatibility নেই)", "orders-এ cust_id নেই", "বৈধই"], answer: 1, why: "আগে শুধু cust_id-তে বিয়োগ, তারপর customer-এর সাথে ⋈ করে নাম আনো।" },
+  { q: "(ii)-এ ২০২৫-এর শর্ত কোথায় বসবে?", options: ["HAVING-এ", "WHERE-এ, কারণ এটা প্রতিটা অর্ডারের শর্ত, যোগের আগে খাটবে", "SELECT-এ", "ORDER BY-তে"], answer: 1, why: "Row-এর শর্ত WHERE, দলের (যোগফলের) শর্ত HAVING।" },
+  { q: "বছরের শর্ত বাদ দিলে কোন ক্যাটাগরি ভুল করে ঢোকে?", options: ["Appliances", "Clothing", "Smart Watch", "কোনোটাই না"], answer: 1, why: "Clothing ২০২৫-এ ৩৮,৫০০, কিন্তু সব বছর মিলিয়ে ৫৬,৫০০।" },
+  { q: "(iii)-এ ORDER BY price DESC LIMIT 1 কেন ভুল?", options: ["ধীর", "সমান দামের দুটো পণ্য থাকলে একটা বাদ পড়ে, আর তার ক্রেতাও", "Error দেয়", "ভুল না"], answer: 1, why: "WHERE price = (SELECT MAX(price) FROM product) সব সমান-সর্বোচ্চ পণ্য রাখে।" }
+]} />

@@ -1,0 +1,364 @@
+<Mission>
+- অ্যাসাইনমেন্টের প্রশ্ন ৪ শূন্য থেকে
+- (i) এক View-এ তিনটা Aggregate-এর সাথে তুলনা: `OR`, `IN`, আর "কোনটার সমান" দেখানো
+- (ii) সহজ প্রশ্নেও কোথায় ভুল লুকায়: দুই টেবিলে একই নামের Column, আর "10 or 40"-কে `AND` লেখা
+- পুরো অধ্যায়ের ছয় ধাপ শেষবার, এবার নিজে আগে চেষ্টা করে
+</Mission>
+
+<Note title="শুরুর আগে: Database নামাও">
+খাতা: [q4-emp.sql](/sql/assignment/q4-emp.sql)। চালাও `mysql -u root -p < q4-emp.sql`, তারপর `USE asg_emp;` (phpMyAdmin হলে **Import**)। নিজের কম্পিউটারে কিছু না থাকলে প্রতিটা Query-র নিচের **চালাও** আর নিচের প্লেগ্রাউন্ড ব্যবহার করো।
+</Note>
+
+## প্রশ্ন
+
+> **4.** Consider the following tables:
+>
+> Emp (<u>empno</u>, ename, job, hiredate, mgr, sal, deptno)<br />
+> Dept (<u>deptno</u>, dname, loc)
+>
+> **(i)** Create a SQL view that shows the details of employees whose salary is equal to the maximum, minimum or average salary of the employees.<br />
+> **(ii)** Write a SQL query to find all those employees who work in department ID 10 or 40. Return name, department number and department name.
+
+## Database চেনা
+
+এটা ডেটাবেসের বইগুলোর বিখ্যাত EMP/DEPT ছক। Column-এর নামগুলো ছোট করা: `sal` = salary, `mgr` = manager-এর `empno`, `loc` = location।
+
+### টেবিলের গঠন
+
+| টেবিল | Column | টাইপ | চাবি | মানে |
+| --- | --- | --- | --- | --- |
+| `Dept` | `deptno` | `INT` | PK | বিভাগের নম্বর |
+| | `dname` | `VARCHAR(30)` | | বিভাগের নাম |
+| | `loc` | `VARCHAR(30)` | | কোথায় |
+| `Emp` | `empno` | `INT` | PK | কর্মীর নম্বর |
+| | `ename` | `VARCHAR(30)` | | নাম |
+| | `job` | `VARCHAR(20)` | | পদ |
+| | `hiredate` | `DATE` | | যোগদান |
+| | `mgr` | `INT` (NULL হতে পারে) | FK → `Emp.empno` | ম্যানেজার, একই টেবিলের আরেকজন |
+| | `sal` | `DECIMAL(10,2)` | | বেতন |
+| | `deptno` | `INT` | FK → `Dept` | কোন বিভাগে |
+
+### সম্পর্ক
+
+<Flow steps={[
+  "Emp.deptno → Dept.deptno",
+  "Emp.mgr → Emp.empno (নিজের টেবিলেই, প্রশ্ন ২-এর মতো)"
+]} />
+
+খেয়াল করো: `deptno` নামটা **দুই টেবিলেই** আছে। (ii)-এ এটা কাজে লাগবে।
+
+### পুরো ডেটা
+
+`Dept` (৫টা):
+
+| deptno | dname | loc |
+| --- | --- | --- |
+| 10 | ACCOUNTING | Dhaka |
+| 20 | RESEARCH | Chattogram |
+| 30 | SALES | Sylhet |
+| 40 | OPERATIONS | Khulna |
+| 50 | MARKETING | Rajshahi |
+
+`Emp` (১১ জন), বেতন অনুযায়ী সাজানো:
+
+| empno | ename | job | hiredate | mgr | sal | deptno |
+| --- | --- | --- | --- | --- | --- | --- |
+| 7839 | KING | PRESIDENT | 2015-11-17 | NULL | 9000.00 | 10 |
+| 7566 | JONES | MANAGER | 2016-04-02 | 7839 | 5500.00 | 20 |
+| 7698 | BLAKE | MANAGER | 2016-05-01 | 7839 | 5200.00 | 30 |
+| 7782 | CLARK | MANAGER | 2016-06-09 | 7839 | 5000.00 | 10 |
+| 7788 | SCOTT | ANALYST | 2019-12-09 | 7566 | 4000.00 | 20 |
+| 7950 | RAHIM | OPERATOR | 2022-03-01 | 7839 | 3800.00 | 40 |
+| 7951 | KARIM | OPERATOR | 2023-06-15 | 7950 | 3500.00 | 40 |
+| 7499 | ALLEN | SALESMAN | 2017-02-20 | 7698 | 3000.00 | 30 |
+| 7934 | MILLER | CLERK | 2018-01-23 | 7782 | 2000.00 | 10 |
+| 7369 | SMITH | CLERK | 2020-12-17 | 7788 | 1500.00 | 20 |
+| 7900 | JAMES | CLERK | 2021-12-03 | 7698 | 1500.00 | 30 |
+
+### ডেটার ভেতরে লুকানো ফাঁদ
+
+- সবার মোট বেতন ৪৪,০০০, কর্মী ১১ জন, তাই গড় **ঠিক ৪,০০০**, আর **SCOTT**-এর বেতনও ঠিক ৪,০০০। (আসল ডেটায় গড় প্রায় কখনো কারো বেতনের সমান হয় না; এখানে ইচ্ছা করে মেলানো, যাতে তিনটা শর্তই কিছু না কিছু দেখায়।)
+- সর্বনিম্ন বেতন (১,৫০০) **দুজনের**: SMITH আর JAMES।
+- ৫০ নম্বর বিভাগে (MARKETING) কেউ নেই।
+
+<Playground db="q4-emp" />
+
+<Tip title="এবার আগে নিজে">
+আগের তিনটা প্রবলেমে ছয় ধাপ দেখেছ। এবার প্রতিটা অংশের ধাপ ১ থেকে ৩ (নিজের ভাষায় বলা, শব্দ দাগানো, হাতে উত্তর) **নিজে খাতায় করো**, প্লেগ্রাউন্ডে Query লেখো, তারপর নিচের সাথে মেলাও।
+</Tip>
+
+## (i) সর্বোচ্চ, সর্বনিম্ন বা গড়ের সমান
+
+**দ্রুত পথ:** [এই প্রশ্নের টেমপ্লেট খোলো](/templates?p=extreme), নিজের নাম বসিয়ে চালাও। নিচে পুরো ভাঙা, ধাপে ধাপে।
+
+### ধাপ ১: নিজের ভাষায় বলো
+
+"পুরো কোম্পানির সর্বোচ্চ বেতন, সর্বনিম্ন বেতন আর গড় বেতন: এই তিনটা সংখ্যার **যেকোনো একটার** সমান যাঁদের বেতন, তাঁদের সব তথ্য একটা View-তে।" প্রতিটা Row = একজন কর্মী।
+
+### ধাপ ২: শব্দ দাগাও
+
+| প্রশ্নের অংশ | মানে | SQL-এ |
+| --- | --- | --- |
+| "Create a SQL view" | Query-কে নাম দিয়ে রাখা | `CREATE VIEW ... AS` |
+| "details of employees" | `Emp`-এর সব Column | `SELECT e.*` |
+| "maximum, minimum **or** average" | তিনটা আলাদা সংখ্যা, যেকোনোটা মিললেই | তিনটা Subquery, `OR` দিয়ে জোড়া |
+| "of the employees" | সবার ওপর, কোনো দল না | `GROUP BY` নেই |
+
+আবার **ভেতরের ছোট প্রশ্ন**: এবার তিনটা, "সর্বোচ্চ কত? সর্বনিম্ন কত? গড় কত?" প্রতিটা একটা সংখ্যা ফেরত দেয় (Scalar Subquery)।
+
+### ধাপ ৩: হাতে উত্তর
+
+সর্বোচ্চ ৯,০০০ → KING। সর্বনিম্ন ১,৫০০ → SMITH, JAMES। গড় ৪৪,০০০ ÷ ১১ = ৪,০০০ → SCOTT। **মোট ৪ জন।**
+
+### ধাপ ৪: ধাপে ধাপে বানাও
+
+তিনটা ছোট প্রশ্ন একসাথে, এক Row-তে:
+
+<Run db="q4-emp">
+```sql
+SELECT MAX(sal) AS max_sal, MIN(sal) AS min_sal, AVG(sal) AS avg_sal, SUM(sal) AS total, COUNT(*) AS n
+FROM Emp;
+```
+</Run>
+
+হাতের হিসাব মিলেছে। এবার প্রতিটাকে আলাদা Subquery বানিয়ে বাইরের তুলনায় বসাই।
+
+### উত্তর
+
+<Run db="q4-emp">
+```sql
+CREATE OR REPLACE VIEW emp_sal_extremes AS
+SELECT e.*
+FROM Emp e
+WHERE e.sal = (SELECT MAX(sal) FROM Emp)
+   OR e.sal = (SELECT MIN(sal) FROM Emp)
+   OR e.sal = (SELECT AVG(sal) FROM Emp);
+
+SELECT * FROM emp_sal_extremes ORDER BY sal DESC, empno;
+```
+</Run>
+
+| empno | ename | job | hiredate | mgr | sal | deptno |
+| --- | --- | --- | --- | --- | --- | --- |
+| 7839 | KING | PRESIDENT | 2015-11-17 | NULL | 9000.00 | 10 |
+| 7788 | SCOTT | ANALYST | 2019-12-09 | 7566 | 4000.00 | 20 |
+| 7369 | SMITH | CLERK | 2020-12-17 | 7788 | 1500.00 | 20 |
+| 7900 | JAMES | CLERK | 2021-12-03 | 7698 | 1500.00 | 30 |
+
+### আলোচনা
+
+**ছোট রূপ: `IN`।** তিনটা `OR` মানে "এই তিনটার কোনো একটার সমান", আর ঠিক সেটাই `IN`:
+
+<Run db="q4-emp">
+```sql
+SELECT e.*
+FROM Emp e
+WHERE e.sal IN ((SELECT MAX(sal) FROM Emp),
+                (SELECT MIN(sal) FROM Emp),
+                (SELECT AVG(sal) FROM Emp))
+ORDER BY e.sal DESC, e.empno;
+```
+</Run>
+
+**কে কোনটার সমান, সেটাও দেখাও।** পরিসংখ্যানগুলো একবার হিসাব করে (এক Row-এর Derived Table) প্রতিটা কর্মীর সাথে জুড়ে দিই, আর `CASE` দিয়ে লেবেল:
+
+<Run db="q4-emp">
+```sql
+SELECT e.empno, e.ename, e.sal,
+       CASE
+         WHEN e.sal = st.max_sal THEN 'maximum'
+         WHEN e.sal = st.min_sal THEN 'minimum'
+         ELSE 'average'
+       END AS matches
+FROM Emp e
+CROSS JOIN (SELECT MAX(sal) AS max_sal, MIN(sal) AS min_sal, AVG(sal) AS avg_sal FROM Emp) st
+WHERE e.sal IN (st.max_sal, st.min_sal, st.avg_sal)
+ORDER BY e.sal DESC, e.empno;
+```
+</Run>
+
+`CROSS JOIN` এখানে নিরাপদ, কারণ ডান পাশে ঠিক একটা Row: প্রতিটা কর্মীর পাশে একই তিনটা সংখ্যা বসে যায়। খাতায় প্রশ্নের উত্তর হিসেবে প্রথম রূপটাই যথেষ্ট; এটা বাড়তি পরিষ্কারতা।
+
+**গড়ের সমান কেউ না থাকলে?** সাধারণত গড় হয় এমন কিছু, যেমন `4183.333333`, যেটা কারো বেতন হয় না। তখন গড়ের অংশ থেকে কেউ আসবে না, আর সেটাই সঠিক উত্তর। `ROUND(AVG(sal))` দিয়ে "কাছাকাছি" মেলানো যায়, কিন্তু সেটা প্রশ্নের অর্থ বদলে দেয়; করলে খাতায় লিখে দাও।
+
+<BugMonster title="(i)-এর ফাঁদ">
+
+**১. `WHERE sal = MAX(sal)`।** `ERROR 1111: Invalid use of group function`। `WHERE` প্রতিটা Row আলাদা দেখে; "সবার সর্বোচ্চ" তখনো জানা নেই। আলাদা Subquery লাগে।
+
+**২. `OR`-এর জায়গায় `AND`।** "max **and** min **and** avg-এর সমান" কারো হওয়া সম্ভব না (তিনটা আলাদা সংখ্যা)। উত্তর খালি। নিচে চালিয়ে দেখো।
+
+**৩. "maximum" দেখে `ORDER BY sal DESC LIMIT 1`।** প্রশ্ন ৩-এর মতো একই ফাঁদ: সর্বনিম্নে দুজন সমান (SMITH, JAMES), `LIMIT 1` একজনকে ফেলে দেয়।
+
+**৪. প্রতি বিভাগের max/min/avg ধরে নেওয়া।** প্রশ্ন বলেছে "of the employees", মানে সবার। প্রশ্ন ২-এর "own branch"-এর মতো শব্দ এখানে নেই, তাই Correlated Subquery না।
+
+</BugMonster>
+
+<Run db="q4-emp">
+```sql
+-- ভুল: AND, তিনটা আলাদা সংখ্যার একসাথে সমান হওয়া অসম্ভব
+SELECT e.ename, e.sal
+FROM Emp e
+WHERE e.sal = (SELECT MAX(sal) FROM Emp)
+  AND e.sal = (SELECT MIN(sal) FROM Emp)
+  AND e.sal = (SELECT AVG(sal) FROM Emp);
+```
+</Run>
+
+ইংরেজির "or" বা বাংলার "অথবা" মানে SQL-এর `OR`; প্রশ্নে "...whose salary is equal to the maximum, minimum or average" পড়ার সময় **একজন কর্মী** ধরে পড়ো: "তাঁর বেতন max অথবা min অথবা avg"। এক Row ধরে পড়লে `AND`/`OR`-এর গোলমাল হয় না।
+
+## (ii) বিভাগ 10 বা 40
+
+**দ্রুত পথ:** [এই প্রশ্নের টেমপ্লেট খোলো](/templates?p=filter-join), নিজের নাম বসিয়ে চালাও। নিচে পুরো ভাঙা, ধাপে ধাপে।
+
+### ধাপ ১: নিজের ভাষায় বলো
+
+"যাঁরা ১০ **অথবা** ৪০ নম্বর বিভাগে কাজ করেন, তাঁদের নাম, বিভাগের নম্বর আর বিভাগের নাম।" প্রতিটা Row = একজন কর্মী।
+
+### ধাপ ২: শব্দ দাগাও
+
+| প্রশ্নের অংশ | মানে | SQL-এ |
+| --- | --- | --- |
+| "name, department number" | `Emp`-এ আছে | `e.ename, e.deptno` |
+| "department name" | `Dept`-এ আছে | `JOIN Dept d`, `d.dname` |
+| "department ID 10 or 40" | এক Column, দুই মান | `e.deptno IN (10, 40)` |
+
+### ধাপ ৩: হাতে উত্তর
+
+বিভাগ ১০ (ACCOUNTING): KING, CLARK, MILLER। বিভাগ ৪০ (OPERATIONS): RAHIM, KARIM। **মোট ৫ জন।**
+
+### ধাপ ৪: ধাপে ধাপে বানাও
+
+এই প্রশ্ন ছোট, তাই এক ধাপেই, কিন্তু একটা চেনা ভুল দিয়ে শুরু করি:
+
+<Run db="q4-emp">
+```sql
+-- প্রথম চেষ্টা: deptno-র সামনে টেবিলের নাম নেই
+SELECT ename, deptno, dname
+FROM Emp e
+JOIN Dept d ON d.deptno = e.deptno
+WHERE deptno IN (10, 40);
+```
+</Run>
+
+Error: `deptno` **ambiguous** (দ্ব্যর্থক)। দুই টেবিলেই এই নামের Column আছে, MySQL জানে না কোনটা বোঝাচ্ছ (MySQL-এ `ERROR 1052`)। মান দুটো একই হলেও বলে দিতে হবে। `ename` আর `dname` এক টেবিলেই আছে বলে সমস্যা নেই, তবু সবগুলোর সামনে alias দেওয়া ভালো অভ্যাস।
+
+### উত্তর
+
+<Run db="q4-emp">
+```sql
+SELECT e.ename, e.deptno, d.dname
+FROM Emp e
+JOIN Dept d ON d.deptno = e.deptno
+WHERE e.deptno IN (10, 40)
+ORDER BY e.deptno, e.ename;
+```
+</Run>
+
+| ename | deptno | dname |
+| --- | --- | --- |
+| CLARK | 10 | ACCOUNTING |
+| KING | 10 | ACCOUNTING |
+| MILLER | 10 | ACCOUNTING |
+| KARIM | 40 | OPERATIONS |
+| RAHIM | 40 | OPERATIONS |
+
+### আলোচনা
+
+**`USING` দিয়ে লেখা।** দুই টেবিলের Column-এর নাম হুবহু এক হলে `JOIN Dept d USING (deptno)` লেখা যায়, আর তখন ফলাফলে `deptno` একটাই Column থাকে, তাই alias ছাড়াই `deptno` লেখা চলে:
+
+<Run db="q4-emp">
+```sql
+SELECT ename, deptno, dname
+FROM Emp
+JOIN Dept USING (deptno)
+WHERE deptno IN (10, 40)
+ORDER BY deptno, ename;
+```
+</Run>
+
+একই উত্তর। (`NATURAL JOIN`-ও একই কাজ করে, কিন্তু সেটা **সব** একই-নামের Column মেলায়; কেউ পরে কোনো টেবিলে একই নামের নতুন Column যোগ করলে চুপচাপ ভুল হতে পারে। `USING` বা `ON` স্পষ্ট।)
+
+**বিভাগে কেউ না থাকলে?** ধরো প্রশ্ন হতো "বিভাগ ১০ বা ৫০", আর রিপোর্টে বিভাগ ৫০-ও দেখাতে হবে, কেউ না থাকলেও। তখন শুরু করতে হবে `Dept` থেকে, `LEFT JOIN` দিয়ে:
+
+<Run db="q4-emp">
+```sql
+SELECT d.deptno, d.dname, e.ename
+FROM Dept d
+LEFT JOIN Emp e ON e.deptno = d.deptno
+WHERE d.deptno IN (10, 50)
+ORDER BY d.deptno, e.ename;
+```
+</Run>
+
+MARKETING একবার, `ename` `NULL`। আসল প্রশ্ন "find all those **employees**" বলেছে, তাই কর্মী থেকে শুরু করা (`INNER JOIN`) ঠিক। **কোন টেবিল থেকে শুরু করবে, তা ঠিক করে প্রশ্নের প্রতি Row-তে কী থাকবে**: কর্মী হলে `Emp`, বিভাগ হলে `Dept`।
+
+<BugMonster title="(ii)-এর ফাঁদ">
+
+**১. `WHERE e.deptno = 10 AND e.deptno = 40`।** একজন একসাথে দুই বিভাগে থাকতে পারেন না: উত্তর খালি। "10 or 40" মানে `OR` বা `IN`।
+
+**২. Ambiguous Column।** দুই টেবিলে একই নাম থাকলে সামনে alias।
+
+**৩. JOIN-এর শর্ত ভুলে যাওয়া।** `FROM Emp e, Dept d WHERE e.deptno IN (10, 40)` লিখে `e.deptno = d.deptno` না দিলে প্রতিটা কর্মী **প্রতিটা** বিভাগের সাথে জোড়া লাগে: ৫ × ৫ = ২৫টা Row, যেখানে KING-কে MARKETING-এও দেখাবে (Cartesian Product, লেভেল ১০)।
+
+</BugMonster>
+
+## পুরো উত্তর এক জায়গায়
+
+```sql
+-- (i)
+CREATE VIEW emp_sal_extremes AS
+SELECT e.*
+FROM Emp e
+WHERE e.sal = (SELECT MAX(sal) FROM Emp)
+   OR e.sal = (SELECT MIN(sal) FROM Emp)
+   OR e.sal = (SELECT AVG(sal) FROM Emp);
+
+-- (ii)
+SELECT e.ename, e.deptno, d.dname
+FROM Emp e
+JOIN Dept d ON d.deptno = e.deptno
+WHERE e.deptno IN (10, 40);
+```
+
+<Quest id="1" title="প্রতি বিভাগের সর্বোচ্চ">
+প্রতিটা বিভাগে যাঁর বেতন **সেই বিভাগের** সর্বোচ্চ, তাঁর নাম, বিভাগের নাম আর বেতন। (প্রশ্ন ২-এর (i) আর এই প্রশ্নের (i)-এর মিশ্রণ।)
+
+<Solution>
+```sql
+SELECT e.ename, d.dname, e.sal
+FROM Emp e
+JOIN Dept d ON d.deptno = e.deptno
+WHERE e.sal = (SELECT MAX(e2.sal) FROM Emp e2 WHERE e2.deptno = e.deptno)
+ORDER BY d.deptno;
+```
+
+KING (ACCOUNTING, ৯,০০০), JONES (RESEARCH, ৫,৫০০), BLAKE (SALES, ৫,২০০), RAHIM (OPERATIONS, ৩,৮০০)। "own branch"-এর মতো "সেই বিভাগের" শব্দটাই বলে দেয় Subquery-টা Correlated হবে। MARKETING আসে না, কারণ সেখানে কেউ নেই।
+</Solution>
+</Quest>
+
+<Quest id="2" title="ম্যানেজারের নামসহ">
+১০ বা ৪০ বিভাগের প্রতিটা কর্মীর নাম, বিভাগের নাম আর তাঁর ম্যানেজারের নাম (না থাকলে `-`)।
+
+<Solution>
+```sql
+SELECT e.ename, d.dname, COALESCE(m.ename, '-') AS manager
+FROM Emp e
+JOIN Dept d     ON d.deptno = e.deptno
+LEFT JOIN Emp m ON m.empno  = e.mgr
+WHERE e.deptno IN (10, 40)
+ORDER BY e.deptno, e.ename;
+```
+
+তিনটা "টেবিল", যার দুটো আসলে একই `Emp`। (ii) আর প্রশ্ন ২-এর (iii) একসাথে: বড় প্রশ্নগুলো আসলে চেনা ছোট টুকরোর জোড়া। KING-এর ম্যানেজার নেই, তাই `LEFT JOIN` আর `-`।
+</Solution>
+</Quest>
+
+<Summary slug="level-5-5" />
+
+<Checkpoint questions={[
+  { q: "WHERE sal = MAX(sal) লিখলে কী হয়?", options: ["সর্বোচ্চ বেতনের কর্মী আসে", "ERROR 1111: Aggregate WHERE-এ বসে না", "সবাই আসে", "NULL আসে"], answer: 1, why: "সবার সর্বোচ্চ আলাদা Subquery-তে: sal = (SELECT MAX(sal) FROM Emp)।" },
+  { q: "\"maximum, minimum or average\"-এর তিনটা শর্ত কী দিয়ে জুড়বে?", options: ["AND", "OR (বা IN)", "UNION", "HAVING"], answer: 1, why: "একজনের বেতন একসাথে তিনটা আলাদা সংখ্যার সমান হতে পারে না; AND দিলে উত্তর খালি।" },
+  { q: "SMITH আর JAMES দুজনেরই সর্বনিম্ন বেতন। = (SELECT MIN(sal) ...) দিলে কয়জন আসবেন?", options: ["একজন", "দুজনই", "কেউ না", "Error"], answer: 1, why: "= MIN সব সমান-সর্বনিম্নকে রাখে; LIMIT 1 রাখত না।" },
+  { q: "SELECT deptno ... FROM Emp e JOIN Dept d ... লিখলে Error কেন?", options: ["deptno নেই", "দুই টেবিলেই deptno আছে, MySQL জানে না কোনটা (ambiguous)", "JOIN ভুল", "WHERE নেই"], answer: 1, why: "e.deptno লেখো, বা JOIN ... USING (deptno)।" },
+  { q: "\"department ID 10 or 40\"-কে WHERE deptno = 10 AND deptno = 40 লিখলে?", options: ["৫ জন", "০ জন, একজন একসাথে দুই বিভাগে নেই", "২৫ জন", "Error"], answer: 1, why: "IN (10, 40) বা OR।" }
+]} />

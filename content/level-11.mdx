@@ -1,0 +1,322 @@
+<Mission>
+- `LEFT JOIN`: বাঁ পাশের সবাই থাকবে, মিল না থাকলেও
+- "যাদের কিছু নেই" খুঁজে বের করার কৌশল (`LEFT JOIN ... IS NULL`)
+- `RIGHT JOIN`, আর MySQL-এ না থাকা `FULL OUTER JOIN` কীভাবে বানাতে হয়
+- `SELF JOIN`: একটা টেবিলকে নিজের সাথেই জোড়া
+- `ON` আর `WHERE`-এ শর্ত বসানোর সূক্ষ্ম পার্থক্য
+</Mission>
+
+লেভেল ১০-এর শেষে প্রশ্ন ছিল: `INNER JOIN` কাদের বাদ দিল? ফারিহার কোনো নম্বর নেই, শারমিন ম্যাডামের কোনো বিষয় নেই, ইংরেজির কোনো শিক্ষক নেই। বাস্তবে এই "বাদ পড়া"-রাই প্রায়ই সবচেয়ে জরুরি তথ্য: কে ফি দেয়নি, কোন পণ্য একবারও বিক্রি হয়নি, কোন কাস্টমার অনেকদিন অর্ডার করেনি।
+
+## LEFT JOIN: বাঁ পাশের কেউ বাদ যাবে না
+
+```sql
+SELECT s.name, m.subject_id, m.score
+FROM students s
+LEFT JOIN marks m ON m.student_id = s.id
+WHERE s.class = 10
+ORDER BY s.id, m.subject_id;
+```
+
+| name | subject_id | score |
+| --- | --- | --- |
+| জুবায়ের | 1 | 65 |
+| জুবায়ের | 2 | 72 |
+| জুবায়ের | 3 | 70 |
+| ফারিহা | NULL | NULL |
+| ইমরান | 1 | 80 |
+| ইমরান | 2 | 76 |
+| ইমরান | 3 | 79 |
+
+ফারিহা এসেছে! `LEFT JOIN` মানে: **`FROM`-এর টেবিলের (বাঁ পাশের) প্রতিটা Row থাকবেই।** ডান পাশে মিল থাকলে সেটা বসবে, না থাকলে ডান পাশের সব ঘর `NULL`।
+
+<Analogy>
+বিয়ের স্বেচ্ছাসেবকের কথা মনে আছে? `LEFT JOIN`-এর স্বেচ্ছাসেবক অতিথি তালিকার **প্রত্যেককে** কোথাও না কোথাও বসায়। যার আসন নেই, তাকে বসায় "আসন: খালি" লেখা একটা চেয়ারে।
+</Analogy>
+
+### যাদের কিছুই নেই
+
+এবার মজার কৌশল: মিল না থাকলে ডান পাশ `NULL`। তাহলে ডান পাশ `NULL` এমন Row-গুলোই হলো "যাদের কিছু নেই":
+
+```sql
+-- কোন ছাত্রের একটাও নম্বর নেই?
+SELECT s.name
+FROM students s
+LEFT JOIN marks m ON m.student_id = s.id
+WHERE m.student_id IS NULL;
+```
+
+| name |
+| --- |
+| ফারিহা |
+
+এই প্যাটার্নটার নাম **Anti Join**, আর এটা বাস্তবে সবচেয়ে বেশি ব্যবহৃত JOIN কৌশলগুলোর একটা। `IS NULL` যাচাই করো ডান টেবিলের এমন Column-এ যেটা কখনো নিজে থেকে `NULL` হয় না (যেমন Primary Key বা `NOT NULL` Column)।
+
+### LEFT JOIN দিয়ে সবার হিসাব
+
+সব ছাত্র কয়টা পরীক্ষা দিয়েছে, কেউ বাদ যাবে না:
+
+```sql
+SELECT s.name, COUNT(m.subject_id) AS exams, IFNULL(SUM(m.score), 0) AS total
+FROM students s
+LEFT JOIN marks m ON m.student_id = s.id
+GROUP BY s.id, s.name
+ORDER BY exams, s.name;
+```
+
+| name | exams | total |
+| --- | --- | --- |
+| ফারিহা | 0 | 0 |
+| লামিয়া | 2 | 192 |
+| আরিফ | 3 | 165 |
+| ইমরান | 3 | 235 |
+| জুবায়ের | 3 | 207 |
+| তানভীর | 3 | 213 |
+| নুসরাত | 3 | 285 |
+| মীম | 3 | 250 |
+| রাফি | 3 | 253 |
+| সাদিয়া | 3 | 274 |
+
+`COUNT(*)` না লিখে `COUNT(m.subject_id)` কেন? ফারিহার জন্য একটা Row আছে (সব `NULL` নিয়ে), তাই `COUNT(*)` তাকে ১ দেখাত। `COUNT(m.subject_id)` `NULL` গোনে না, তাই সঠিক উত্তর ০।
+
+## RIGHT JOIN: উল্টো দিক
+
+```sql
+SELECT t.name AS teacher, sub.name AS subject
+FROM teachers t
+LEFT JOIN subjects sub ON sub.teacher_id = t.id
+ORDER BY t.id;
+```
+
+| teacher | subject |
+| --- | --- |
+| হাসান স্যার | গণিত |
+| রুমানা ম্যাডাম | বাংলা |
+| কামাল স্যার | বিজ্ঞান |
+| শারমিন ম্যাডাম | NULL |
+
+```sql
+SELECT t.name AS teacher, sub.name AS subject
+FROM teachers t
+RIGHT JOIN subjects sub ON sub.teacher_id = t.id
+ORDER BY sub.id;
+```
+
+| teacher | subject |
+| --- | --- |
+| হাসান স্যার | গণিত |
+| রুমানা ম্যাডাম | বাংলা |
+| কামাল স্যার | বিজ্ঞান |
+| NULL | ইংরেজি |
+
+`RIGHT JOIN` ডান পাশের সবাইকে রাখে। আসলে `A RIGHT JOIN B` আর `B LEFT JOIN A` একই জিনিস। বেশির ভাগ ডেভেলপার শুধু `LEFT JOIN` লেখে, টেবিলের ক্রম বদলে নেয়; তাতে Query পড়া সহজ হয়।
+
+## FULL OUTER JOIN: MySQL-এ নেই, বানিয়ে নাও
+
+"সব শিক্ষক আর সব বিষয়, দুই পাশের একা-রাও" চাই। অনেক Database-এ এর জন্য `FULL OUTER JOIN` আছে, কিন্তু **MySQL-এ নেই।** সমাধান: `LEFT` আর `RIGHT` জোড়া দাও `UNION` দিয়ে (লেভেল ১২-এ বিস্তারিত):
+
+```sql
+SELECT t.name AS teacher, sub.name AS subject
+FROM teachers t LEFT JOIN subjects sub ON sub.teacher_id = t.id
+UNION
+SELECT t.name, sub.name
+FROM teachers t RIGHT JOIN subjects sub ON sub.teacher_id = t.id;
+```
+
+| teacher | subject |
+| --- | --- |
+| হাসান স্যার | গণিত |
+| রুমানা ম্যাডাম | বাংলা |
+| কামাল স্যার | বিজ্ঞান |
+| শারমিন ম্যাডাম | NULL |
+| NULL | ইংরেজি |
+
+| JOIN | কী রাখে |
+| --- | --- |
+| `INNER JOIN` | শুধু মিল থাকা জোড়া |
+| `LEFT JOIN` | বাঁ পাশের সব + মিল থাকলে ডান |
+| `RIGHT JOIN` | ডান পাশের সব + মিল থাকলে বাঁ |
+| `FULL OUTER` (MySQL-এ `UNION` দিয়ে) | দুই পাশের সব |
+| `CROSS JOIN` | প্রতিটার সাথে প্রতিটা |
+
+## SELF JOIN: নিজের সাথে নিজে
+
+`teachers.head_id` দেখায় `teachers`-কেই। প্রত্যেক শিক্ষকের পাশে তাঁর বিভাগীয় প্রধানের নাম চাই। একই টেবিল দুবার, দুটো আলাদা Alias দিয়ে, যেন দুটো আলাদা টেবিল:
+
+```sql
+SELECT t.name AS teacher, h.name AS head
+FROM teachers t
+LEFT JOIN teachers h ON h.id = t.head_id
+ORDER BY t.id;
+```
+
+| teacher | head |
+| --- | --- |
+| হাসান স্যার | NULL |
+| রুমানা ম্যাডাম | হাসান স্যার |
+| কামাল স্যার | হাসান স্যার |
+| শারমিন ম্যাডাম | রুমানা ম্যাডাম |
+
+`t` হলো "শিক্ষক হিসেবে" টেবিলটা, `h` হলো "প্রধান হিসেবে"। `LEFT JOIN` দিয়েছি যাতে হাসান স্যার (যাঁর কোনো প্রধান নেই) বাদ না পড়েন।
+
+আরেকটা Self Join: একই শহরের ছাত্রদের জোড়া, রুমমেট খোঁজার জন্য:
+
+```sql
+SELECT a.name AS student1, b.name AS student2, a.city
+FROM students a
+JOIN students b ON a.city = b.city AND a.id < b.id
+ORDER BY a.city, a.id, b.id;
+```
+
+| student1 | student2 | city |
+| --- | --- | --- |
+| নুসরাত | ফারিহা | চট্টগ্রাম |
+| রাফি | তানভীর | ঢাকা |
+| রাফি | সাদিয়া | ঢাকা |
+| রাফি | ইমরান | ঢাকা |
+| তানভীর | সাদিয়া | ঢাকা |
+| তানভীর | ইমরান | ঢাকা |
+| সাদিয়া | ইমরান | ঢাকা |
+
+`a.id < b.id` না দিলে প্রত্যেকে নিজের সাথেও জোড়া হতো (রাফি-রাফি), আর প্রতিটা জোড়া দুবার আসত (রাফি-তানভীর, তানভীর-রাফি)।
+
+## ON-এ শর্ত নাকি WHERE-এ? (সূক্ষ্ম কিন্তু জরুরি)
+
+ক্লাস ৮-এর সবাই, আর তাদের বিজ্ঞানের নম্বর (না থাকলে খালি):
+
+```sql
+-- ✅ বিষয়ের শর্ত ON-এ
+SELECT s.name, m.score
+FROM students s
+LEFT JOIN marks m ON m.student_id = s.id AND m.subject_id = 3
+WHERE s.class = 8
+ORDER BY s.id;
+```
+
+| name | score |
+| --- | --- |
+| রাফি | 90 |
+| নুসরাত | 95 |
+| তানভীর | 68 |
+| লামিয়া | NULL |
+
+```sql
+-- ❌ বিষয়ের শর্ত WHERE-এ
+SELECT s.name, m.score
+FROM students s
+LEFT JOIN marks m ON m.student_id = s.id
+WHERE m.subject_id = 3 AND s.class = 8
+ORDER BY s.id;
+```
+
+| name | score |
+| --- | --- |
+| রাফি | 90 |
+| নুসরাত | 95 |
+| তানভীর | 68 |
+
+লামিয়া হারিয়ে গেল! কারণ `WHERE` চলে JOIN-এর **পরে**। লামিয়ার Row-এ `m.subject_id` ছিল `NULL`, আর `NULL = 3` সত্যি না, তাই `WHERE` তাকে ফেলে দিল। ফলে `LEFT JOIN` চুপচাপ `INNER JOIN` হয়ে গেল।
+
+<Remember>
+**`LEFT JOIN`-এ ডান টেবিলের শর্ত `ON`-এ লেখো, `WHERE`-এ না।** `WHERE`-এ ডান টেবিলের Column-এর শর্ত (`IS NULL` ছাড়া) দিলে তোমার `LEFT JOIN` নিঃশব্দে `INNER JOIN` হয়ে যায়। বাঁ টেবিলের শর্ত (`s.class = 8`) `WHERE`-এই থাকবে।
+</Remember>
+
+<BugMonster title="বাইরের JOIN-এর ফাঁদ">
+
+**১. `LEFT JOIN`-এর পর `COUNT(*)`।** মিল না থাকা Row-ও গোনা হয়। ডান টেবিলের কোনো Column গোনো: `COUNT(m.subject_id)`।
+
+**২. `WHERE`-এ ডান টেবিলের শর্ত।** ওপরের উদাহরণ। ফলাফলে "বাদ পড়া"-রা আসছে না দেখলে প্রথমেই এটা সন্দেহ করো।
+
+**৩. `FULL OUTER JOIN` লিখে error।** MySQL-এ এটা নেই; `LEFT ... UNION ... RIGHT`।
+
+**৪. একাধিক `LEFT JOIN`-এ মাঝখানে `INNER`।** `A LEFT JOIN B ... JOIN C ON C.x = B.y` লিখলে, যেখানে B নেই সেখানে C-ও মিলবে না, আর `INNER JOIN` সেই Row-গুলো ফেলে দেবে। শিকলের পরের সব JOIN-ও `LEFT` রাখো।
+
+</BugMonster>
+
+<Quest id="1" title="শিক্ষকহীন বিষয়">
+`LEFT JOIN` দিয়ে (RIGHT ছাড়া) খুঁজে বের করো কোন বিষয়ের কোনো শিক্ষক নেই।
+
+<Solution>
+```sql
+SELECT sub.name
+FROM subjects sub
+LEFT JOIN teachers t ON t.id = sub.teacher_id
+WHERE t.id IS NULL;
+```
+
+ইংরেজি। (এখানে `WHERE sub.teacher_id IS NULL` লিখলেও চলত, কিন্তু Anti Join প্যাটার্নটা সব ক্ষেত্রে কাজ করে, এমনকি যখন `teacher_id`-তে এমন মান থাকে যার শিক্ষক মুছে গেছে।)
+</Solution>
+</Quest>
+
+<Quest id="2" title="কোন পরীক্ষা বাকি?">
+প্রতিটা ছাত্র কোন কোন বিষয়ের (ইংরেজি বাদে) পরীক্ষা দেয়নি? ইঙ্গিত: আগে সব ছাত্র × সব বিষয়ের তালিকা বানাও (`CROSS JOIN`), তারপর `marks`-এ না থাকাগুলো খোঁজো।
+
+<Solution>
+```sql
+SELECT s.name, sub.name AS subject
+FROM students s
+CROSS JOIN subjects sub
+LEFT JOIN marks m ON m.student_id = s.id AND m.subject_id = sub.id
+WHERE m.student_id IS NULL AND sub.name <> 'ইংরেজি'
+ORDER BY s.id, sub.id;
+```
+
+| name | subject |
+| --- | --- |
+| ফারিহা | গণিত |
+| ফারিহা | বাংলা |
+| ফারিহা | বিজ্ঞান |
+| লামিয়া | বিজ্ঞান |
+
+`CROSS JOIN` এখানে ইচ্ছাকৃত: "সব সম্ভাব্য জোড়া" দরকার ছিল। খেয়াল করো, `LEFT JOIN`-এর `ON`-এ দুটো শর্ত।
+</Solution>
+</Quest>
+
+<Quest id="3" title="প্রধানের দল">
+প্রতিটা বিভাগীয় প্রধানের অধীনে কয়জন শিক্ষক আছেন? যাঁদের অধীনে কেউ নেই, তাঁরাও ০ দেখাবেন।
+
+<Solution>
+```sql
+SELECT h.name AS head, COUNT(t.id) AS team_size
+FROM teachers h
+LEFT JOIN teachers t ON t.head_id = h.id
+GROUP BY h.id, h.name
+ORDER BY team_size DESC;
+```
+
+হাসান স্যার ২, রুমানা ম্যাডাম ১, কামাল স্যার ০, শারমিন ম্যাডাম ০।
+</Solution>
+</Quest>
+
+<Boss title="অভিভাবকের রিপোর্ট কার্ড">
+প্রতিটা ছাত্রের (কেউ বাদ যাবে না) জন্য এক লাইনে: নাম, গণিত, বাংলা, বিজ্ঞানের নম্বর আলাদা Column-এ (না থাকলে "অনুপস্থিত"), আর বিজ্ঞান শিক্ষকের নাম। ইঙ্গিত: একই `marks` টেবিল তিনবার, তিনটা আলাদা Alias দিয়ে।
+
+<Solution>
+```sql
+SELECT s.name,
+       IFNULL(m1.score, 'অনুপস্থিত') AS math,
+       IFNULL(m2.score, 'অনুপস্থিত') AS bangla,
+       IFNULL(m3.score, 'অনুপস্থিত') AS science,
+       t.name AS science_teacher
+FROM students s
+LEFT JOIN marks m1 ON m1.student_id = s.id AND m1.subject_id = 1
+LEFT JOIN marks m2 ON m2.student_id = s.id AND m2.subject_id = 2
+LEFT JOIN marks m3 ON m3.student_id = s.id AND m3.subject_id = 3
+LEFT JOIN subjects sub ON sub.id = 3
+LEFT JOIN teachers t ON t.id = sub.teacher_id
+ORDER BY s.class, s.roll;
+```
+
+এখানে তিনটা কৌশল একসাথে: প্রতিটা বিষয়ের শর্ত `ON`-এ (যাতে কেউ বাদ না পড়ে), একই টেবিল তিন Alias-এ, আর শিকলের সব JOIN `LEFT`। আরেকটা উপায় আছে, `GROUP BY s.id` আর `MAX(CASE WHEN m.subject_id = 1 THEN m.score END)`। একে বলে **Pivot**, সারিকে কলামে ঘোরানো। দুটোই চেষ্টা করে দেখো।
+</Solution>
+</Boss>
+
+<Summary slug="level-11" />
+
+<Checkpoint questions={[
+  { q: "LEFT JOIN-এ ডান পাশে মিল না থাকলে কী হয়?", options: ["Row বাদ পড়ে", "ডান পাশের ঘরগুলো NULL হয়", "Error দেয়", "আগের Row কপি হয়"], answer: 1, why: "বাঁ পাশের Row থাকবেই; ডান পাশ খালি মানে NULL।" },
+  { q: "'যে ছাত্রের কোনো নম্বর নেই' খোঁজার প্যাটার্ন কোনটা?", options: ["INNER JOIN ... WHERE score = 0", "LEFT JOIN marks ... WHERE m.student_id IS NULL", "RIGHT JOIN ... WHERE s.id IS NULL", "CROSS JOIN"], answer: 1, why: "Anti Join: মিল না থাকলে ডান পাশ NULL, সেটাই ধরো।" },
+  { q: "MySQL-এ FULL OUTER JOIN কীভাবে করবে?", options: ["FULL OUTER JOIN লিখে", "LEFT JOIN ... UNION ... RIGHT JOIN", "CROSS JOIN", "করা যায় না"], answer: 1, why: "MySQL-এ FULL OUTER নেই, দুই পাশের JOIN UNION দিয়ে মেলাও।" },
+  { q: "LEFT JOIN-এর পর WHERE m.subject_id = 3 লিখলে কী হয়?", options: ["কিছু বদলায় না", "LEFT JOIN কার্যত INNER JOIN হয়ে যায়", "Error দেয়", "সব Row দ্বিগুণ হয়"], answer: 1, why: "মিলহীন Row-এর NULL = 3 সত্যি না, তাই WHERE সেগুলো ফেলে দেয়। শর্তটা ON-এ দাও।" },
+  { q: "SELF JOIN-এ একই টেবিল দুবার ব্যবহার করতে কী লাগে?", options: ["দুটো আলাদা Alias", "টেবিল কপি করা", "UNION", "বিশেষ অনুমতি"], answer: 0, why: "Alias দিয়ে MySQL একই টেবিলকে দুটো আলাদা ভূমিকায় দেখে।" }
+]} />

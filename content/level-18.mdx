@@ -1,0 +1,399 @@
+<Mission>
+- **Transaction**: "হয় সব, নয় কিছুই না"
+- `START TRANSACTION`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, আর `autocommit`
+- **ACID**-এর চারটা প্রতিশ্রুতি
+- একসাথে অনেকে কাজ করলে কী গোলমাল হয় (Dirty Read, Non-repeatable Read, Phantom Read), আর **Isolation Level**
+- `SELECT ... FOR UPDATE` দিয়ে Lock, আর **Deadlock** কী
+</Mission>
+
+<Story title="লেভেল ০-এর প্রতিশ্রুতি">
+লেভেল ০-এ bKash-এর কথা বলেছিলাম: রাফি নুসরাতকে ১০০০ টাকা পাঠালে রাফির অ্যাকাউন্ট থেকে কমবে **আর** নুসরাতের অ্যাকাউন্টে বাড়বে, দুটোই একসাথে, নয়তো কোনোটাই না। ভাবো, প্রথম কাজটার পরেই বিদ্যুৎ চলে গেল। রাফির টাকা কাটা, নুসরাত কিছুই পায়নি। টাকা হাওয়ায় মিলিয়ে গেল! আজ শিখব এটা কীভাবে কখনো হতে দেওয়া হয় না।
+</Story>
+
+## পরীক্ষাগার: ছোট্ট একটা ব্যাংক
+
+```sql
+CREATE DATABASE bank CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE bank;
+
+CREATE TABLE accounts (
+  id      INT PRIMARY KEY,
+  owner   VARCHAR(100) NOT NULL,
+  balance DECIMAL(12,2) NOT NULL CHECK (balance >= 0)
+);
+
+CREATE TABLE transfers (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  from_id    INT NOT NULL,
+  to_id      INT NOT NULL,
+  amount     DECIMAL(12,2) NOT NULL CHECK (amount > 0),
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (from_id) REFERENCES accounts(id),
+  FOREIGN KEY (to_id)   REFERENCES accounts(id)
+);
+
+INSERT INTO accounts VALUES (1, 'রাফি', 5000.00), (2, 'নুসরাত', 2000.00), (3, 'মীম', 300.00);
+```
+
+(কাল্পনিক ব্যাংক; সত্যিকারের কোনো মোবাইল ব্যাংকিং সেবার ভেতরের গঠন এমন, সেটা দাবি করছি না।) মোট টাকা: ৭৩০০। এই সংখ্যাটা মনে রাখো; টাকা শুধু হাত বদলাবে, তৈরি বা ধ্বংস হবে না।
+
+## প্রথম Transaction
+
+```sql
+START TRANSACTION;
+  UPDATE accounts SET balance = balance - 1000 WHERE id = 1;
+  UPDATE accounts SET balance = balance + 1000 WHERE id = 2;
+  INSERT INTO transfers (from_id, to_id, amount) VALUES (1, 2, 1000);
+COMMIT;
+
+SELECT * FROM accounts;
+```
+
+| id | owner | balance |
+| --- | --- | --- |
+| 1 | রাফি | 4000.00 |
+| 2 | নুসরাত | 3000.00 |
+| 3 | মীম | 300.00 |
+
+- `START TRANSACTION` (বা `BEGIN`) একটা Transaction শুরু করে।
+- ভেতরের পরিবর্তনগুলো `COMMIT`-এর আগ পর্যন্ত **অস্থায়ী**: অন্য কেউ দেখতে পায় না, আর সার্ভার বন্ধ হলে মুছে যায়।
+- `COMMIT` সব একসাথে স্থায়ী করে।
+- `ROLLBACK` দিলে `START TRANSACTION`-এর পরের সব কাজ বাতিল, যেন কিছুই হয়নি।
+
+### autocommit: এতদিন কী হচ্ছিল?
+
+```sql
+SELECT @@autocommit;   -- 1
+```
+
+MySQL-এ ডিফল্টে `autocommit` চালু। মানে, `START TRANSACTION` না লিখলে **প্রতিটা কমান্ড নিজেই একটা আলাদা Transaction**, চালানোর সাথে সাথেই `COMMIT`। এতদিনের প্রতিটা `UPDATE` এজন্যই সাথে সাথে স্থায়ী হতো, আর লেভেল ২-এ বলেছিলাম "Undo নেই"।
+
+## সবচেয়ে বড় ভুল: Error মানেই Rollback না
+
+মীমের অ্যাকাউন্টে ৩০০ টাকা। সে রাফিকে ৫০০ পাঠাতে চাইল:
+
+```sql
+START TRANSACTION;
+  UPDATE accounts SET balance = balance - 500 WHERE id = 3;  -- CHECK (balance >= 0) ভাঙবে
+  UPDATE accounts SET balance = balance + 500 WHERE id = 1;
+COMMIT;
+```
+
+<ErrorBox title="ERROR 3819">
+Check constraint 'accounts_chk_1' is violated.
+</ErrorBox>
+
+প্রথম লাইন আটকে গেল, ভালো কথা। কিন্তু টার্মিনাল বা কোনো প্রোগ্রাম যদি error-এর পরেও বাকি লাইনগুলো চালিয়ে যায় (phpMyAdmin-এ, স্ক্রিপ্টে, বা অসাবধানী অ্যাপের কোডে এটা সহজেই ঘটে), তাহলে:
+
+| id | owner | balance |
+| --- | --- | --- |
+| 1 | রাফি | 5500.00 |
+| 2 | নুসরাত | 2000.00 |
+| 3 | মীম | 300.00 |
+
+মোট এখন ৭৮০০! ৫০০ টাকা শূন্য থেকে তৈরি হলো। কারণ MySQL-এ একটা কমান্ড ব্যর্থ হলে **শুধু সেই কমান্ডটা** বাতিল হয়, পুরো Transaction না। Transaction খোলাই থাকে, আর পরের `COMMIT` সফল অংশগুলো স্থায়ী করে দেয়।
+
+<Remember>
+**Transaction-এর ভেতরে যেকোনো error হলে তোমাকেই `ROLLBACK` করতে হবে।** MySQL নিজে থেকে পুরোটা বাতিল করে না (Deadlock আর কিছু বিশেষ ক্ষেত্র ছাড়া)। অ্যাপের কোডে এর মানে: `try { ... commit } catch { rollback }`। Database-এর ভেতরে এর মানে নিচের Procedure।
+</Remember>
+
+## নিরাপদ টাকা পাঠানো: Procedure + Handler
+
+```sql
+DELIMITER //
+CREATE PROCEDURE transfer(IN p_from INT, IN p_to INT, IN p_amount DECIMAL(12,2))
+BEGIN
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;     -- যেকোনো error হলে পুরোটা বাতিল
+    RESIGNAL;     -- আর error-টা ডাকে যে তাকে জানিয়ে দাও
+  END;
+
+  START TRANSACTION;
+    UPDATE accounts SET balance = balance - p_amount WHERE id = p_from;
+    UPDATE accounts SET balance = balance + p_amount WHERE id = p_to;
+    INSERT INTO transfers (from_id, to_id, amount) VALUES (p_from, p_to, p_amount);
+  COMMIT;
+END //
+DELIMITER ;
+```
+
+শুরুর অবস্থায় ফিরিয়ে (ওপরের `CREATE`/`INSERT` আবার চালিয়ে) পরীক্ষা করি:
+
+```sql
+CALL transfer(1, 2, 1000);   -- সফল: রাফি 4000, নুসরাত 3000
+CALL transfer(3, 1, 500);    -- ERROR 3819, কিন্তু রাফির টাকা বাড়েনি
+CALL transfer(1, 99, 100);   -- ৯৯ নম্বর অ্যাকাউন্ট নেই
+```
+
+শেষেরটা মজার। `UPDATE ... WHERE id = 99` কোনো error দেয় না, শুধু "০টা Row বদলাল" বলে! রাফির ১০০ টাকা কাটা হয়ে যেত, কেউ পেত না। আমাদের বাঁচাল `transfers`-এর Foreign Key: `INSERT`-এ `ERROR 1452` হলো, Handler পুরোটা ফিরিয়ে দিল। Constraint আর Transaction একসাথে কাজ করে। (আরও নিরাপদ: `UPDATE`-এর পরে `ROW_COUNT()` যাচাই করে নিজেই `SIGNAL` দাও।)
+
+## SAVEPOINT: আংশিক ফেরা
+
+```sql
+START TRANSACTION;
+  UPDATE accounts SET balance = balance + 100 WHERE id = 2;
+  SAVEPOINT after_bonus;
+  UPDATE accounts SET balance = balance + 999 WHERE id = 2;   -- ভুল!
+  ROLLBACK TO SAVEPOINT after_bonus;                          -- শুধু ভুলটা বাতিল
+COMMIT;                                                        -- প্রথম ১০০ টাকা থাকল
+```
+
+## ACID: চারটা প্রতিশ্রুতি
+
+| অক্ষর | নাম | মানে | ব্যাংকে |
+| --- | --- | --- | --- |
+| **A** | Atomicity | হয় সব, নয় কিছুই না | টাকা কাটা আর জমা একসাথে, বা কোনোটাই না |
+| **C** | Consistency | Transaction শেষে সব নিয়ম (Constraint) মানা থাকবে | কোনো ব্যালান্স ঋণাত্মক না, মোট টাকা ঠিক |
+| **I** | Isolation | একসাথে চলা Transaction একে অন্যের অর্ধেক কাজ দেখবে না | রাফির পাঠানোর মাঝখানে হিসাবরক্ষক অর্ধেক অবস্থা দেখবেন না |
+| **D** | Durability | `COMMIT` হলে স্থায়ী, বিদ্যুৎ গেলেও | রসিদ পেলে টাকা পৌঁছানো নিশ্চিত |
+
+MySQL-এর ডিফল্ট Storage Engine **InnoDB** এই চারটাই দেয়। (Durability-র জন্য InnoDB প্রতিটা পরিবর্তন আগে একটা Log-এ, যার নাম **Redo Log**, লিখে রাখে; বিদ্যুৎ গেলে আবার চালু হয়ে সেখান থেকে পুনরুদ্ধার করে।) পুরোনো `MyISAM` Engine Transaction সমর্থনই করত না; `SHOW CREATE TABLE`-এ `ENGINE=InnoDB` দেখে নিশ্চিত হও।
+
+## একসাথে অনেকে: কী কী গোলমাল হতে পারে
+
+ধরো দুজন একই সময়ে কাজ করছে: **A** (হিসাবরক্ষক, রিপোর্ট বানাচ্ছেন) আর **B** (টাকা পাঠানো চলছে)।
+
+| সমস্যা | কী হয় |
+| --- | --- |
+| **Dirty Read** | A এমন ডেটা পড়ল যা B এখনো `COMMIT` করেনি; পরে B `ROLLBACK` করলে A একটা কখনো-না-ঘটা অবস্থা দেখে ফেলল |
+| **Non-repeatable Read** | A একই Row দুবার পড়ল, মাঝখানে B বদলে `COMMIT` করল, A দুই রকম মান পেল |
+| **Phantom Read** | A একই শর্তে দুবার গুনল (`COUNT(*) WHERE ...`), মাঝখানে B নতুন Row ঢোকাল, দ্বিতীয়বার একটা "ভূত" Row বেশি এলো |
+
+## Isolation Level
+
+কতটা আলাদা রাখবে, সেটা বেছে নেওয়া যায়। যত কড়া, তত নিরাপদ, কিন্তু তত বেশি অপেক্ষা (ধীর):
+
+| Level | Dirty Read | Non-repeatable | Phantom |
+| --- | --- | --- | --- |
+| `READ UNCOMMITTED` | হতে পারে | হতে পারে | হতে পারে |
+| `READ COMMITTED` | না | হতে পারে | হতে পারে |
+| `REPEATABLE READ` (**MySQL-এর ডিফল্ট**) | না | না | স্ট্যান্ডার্ডে হতে পারে* |
+| `SERIALIZABLE` | না | না | না |
+
+\* SQL স্ট্যান্ডার্ড অনুযায়ী `REPEATABLE READ`-এ Phantom হতে পারে, কিন্তু InnoDB সাধারণ `SELECT`-এ একটা স্থির **Snapshot** দেখায়, আর Lock করা পড়ায় **Next-Key Lock** ব্যবহার করে, তাই বাস্তবে বেশির ভাগ Phantom আটকে যায়।
+
+```sql
+SELECT @@transaction_isolation;                          -- REPEATABLE-READ
+SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;  -- এই সংযোগের জন্য বদলাও
+```
+
+### নিজের চোখে দেখো
+
+দুটো আলাদা টার্মিনাল (বা phpMyAdmin-এর দুটো ট্যাব) খোলো।
+
+| সময় | টার্মিনাল ১ | টার্মিনাল ২ |
+| --- | --- | --- |
+| ১ | `START TRANSACTION;` | |
+| ২ | `SELECT balance FROM accounts WHERE id = 1;` → 5000 | |
+| ৩ | | `UPDATE accounts SET balance = 9999 WHERE id = 1;` (autocommit) |
+| ৪ | `SELECT balance FROM accounts WHERE id = 1;` → **5000** | |
+| ৫ | `COMMIT;` | |
+
+ডিফল্ট `REPEATABLE READ`-এ টার্মিনাল ১ পুরো Transaction জুড়ে একই Snapshot দেখল: 5000, 5000। একই পরীক্ষা টার্মিনাল ১-এ আগে `SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;` দিয়ে চালালে ধাপ ৪-এ আসে **9999**, Non-repeatable Read। আমরা এটা MySQL 8-এ চালিয়ে মিলিয়ে দেখেছি।
+
+## Lock আর SELECT ... FOR UPDATE
+
+লেভেল ১৭-এর শেষ প্রশ্ন: দুজন লাইব্রেরিয়ান একসাথে শেষ কপিটা দিলে? বা দুটো ডিভাইস থেকে একসাথে মীমের ৩০০ টাকা থেকে ২০০ করে পাঠালে? দুজনই "৩০০ আছে" পড়ে, দুজনই পাঠায়। (আমাদের `CHECK` এখানে বাঁচাত, কিন্তু সব নিয়ম `CHECK`-এ বসানো যায় না।)
+
+সমাধান: পড়ার সময়ই Row-টা **Lock** করো:
+
+```sql
+START TRANSACTION;
+  SELECT balance FROM accounts WHERE id = 3 FOR UPDATE;   -- Lock!
+  -- অ্যাপ যাচাই করে: ব্যালান্স কি যথেষ্ট?
+  UPDATE accounts SET balance = balance - 200 WHERE id = 3;
+COMMIT;                                                    -- Lock ছাড়া হলো
+```
+
+`FOR UPDATE` দেওয়া Row অন্য কোনো Transaction `FOR UPDATE` দিয়ে পড়তে বা বদলাতে চাইলে **অপেক্ষা** করবে, যতক্ষণ না প্রথমজন `COMMIT` বা `ROLLBACK` করে। দ্বিতীয় ডিভাইস তখন নতুন ব্যালান্স (১০০) দেখবে আর প্রত্যাখ্যাত হবে।
+
+InnoDB Row-Level Lock ব্যবহার করে: শুধু দরকারি Row-টা আটকায়, পুরো টেবিল না। কিন্তু `WHERE`-এর Column-এ Index না থাকলে সে অনেক বেশি Row আটকে ফেলতে পারে। লেভেল ১৬ এখানেও কাজে লাগে।
+
+## Deadlock: দুজন দুজনের জন্য অপেক্ষায়
+
+একই মুহূর্তে রাফি নুসরাতকে আর নুসরাত রাফিকে টাকা পাঠাচ্ছে:
+
+| সময় | Transaction A (রাফি → নুসরাত) | Transaction B (নুসরাত → রাফি) |
+| --- | --- | --- |
+| ১ | রাফির Row Lock করল | |
+| ২ | | নুসরাতের Row Lock করল |
+| ৩ | নুসরাতের Row চায়, B-এর জন্য অপেক্ষা... | |
+| ৪ | | রাফির Row চায়, A-এর জন্য অপেক্ষা... |
+
+দুজনই চিরকাল অপেক্ষায়। একে বলে **Deadlock**। InnoDB এটা নিজে থেকে ধরে ফেলে, আর একটা Transaction-কে বাতিল (Rollback) করে দেয় যাতে অন্যটা এগোতে পারে:
+
+<ErrorBox title="ERROR 1213 (40001)">
+Deadlock found when trying to get lock; try restarting transaction
+</ErrorBox>
+
+আমাদের পরীক্ষায় B সফল হলো, A বাতিল। এটা বাগ না, স্বাভাবিক ঘটনা। প্রতিকার:
+
+- **অ্যাপে আবার চেষ্টা (Retry) করার ব্যবস্থা রাখো।** error-টা নিজেই বলছে: "try restarting transaction"।
+- **সবসময় একই ক্রমে Lock নাও।** যেমন সবসময় ছোট `id`-র অ্যাকাউন্ট আগে আপডেট করো, টাকা যেদিকেই যাক। তাহলে দুজনই প্রথমে একই Row চাইবে, একজন অপেক্ষা করবে, কিন্তু চক্র তৈরি হবে না।
+- **Transaction ছোট রাখো।** Transaction খোলা রেখে ইউজারের ইনপুটের জন্য অপেক্ষা করবে না।
+
+<BugMonster title="দরবারের ষড়যন্ত্র">
+
+**১. Error-এর পর `COMMIT`।** ওপরের ৫০০ টাকার জাদু। Handler বা অ্যাপের `catch`-এ `ROLLBACK`।
+
+**২. DDL Transaction ভেঙে দেয়।** Transaction-এর মাঝে `CREATE`, `ALTER`, `DROP` বা `TRUNCATE` চালালে MySQL নিঃশব্দে আগের সব কাজ `COMMIT` করে ফেলে (**Implicit Commit**), তারপর আর `ROLLBACK` চলে না।
+
+**৩. খোলা রাখা Transaction।** phpMyAdmin বা টার্মিনালে `START TRANSACTION` দিয়ে ভুলে চলে গেলে সেই Row-গুলো Lock থাকে, আর অন্যরা আটকে যায় (`Lock wait timeout exceeded`)।
+
+**৪. MyISAM টেবিল।** `ROLLBACK` করলেও কিছু ফেরে না। `ENGINE=InnoDB` নিশ্চিত করো।
+
+**৫. `UPDATE` ০টা Row বদলাল, কেউ টের পেল না।** ভুল `id`-তে error আসে না। `ROW_COUNT()` যাচাই করো।
+
+</BugMonster>
+
+<Quest id="1" title="ROLLBACK অনুভব করো">
+একটা Transaction শুরু করে সব অ্যাকাউন্টের ব্যালান্স শূন্য করো, `SELECT` দিয়ে দেখো, তারপর `ROLLBACK` দিয়ে আবার দেখো।
+
+<Solution>
+```sql
+START TRANSACTION;
+UPDATE accounts SET balance = 0;
+SELECT * FROM accounts;   -- সব শূন্য (শুধু তুমি দেখছ)
+ROLLBACK;
+SELECT * FROM accounts;   -- আগের মতো
+```
+
+এই অভ্যাসটা বাস্তবে কাজে লাগে: বিপজ্জনক `UPDATE` আগে Transaction-এর ভেতরে চালাও, ফলাফল দেখো, ঠিক থাকলে `COMMIT`, নাহলে `ROLLBACK`।
+</Solution>
+</Quest>
+
+<Quest id="2" title="ACID চেনো">
+প্রতিটা ঘটনা ACID-এর কোন অক্ষর নিশ্চিত করে? (ক) সার্ভার ক্র্যাশের পরেও গতকালের জমা টাকা আছে; (খ) রিপোর্ট বানানোর মাঝখানে অন্যের অর্ধেক-সম্পন্ন লেনদেন দেখা যায় না; (গ) টাকা কেটে জমা দেওয়ার আগেই error হলে কাটাটাও বাতিল; (ঘ) কোনো লেনদেনের পরে কোনো ব্যালান্স ঋণাত্মক হয় না।
+
+<Solution>
+(ক) Durability · (খ) Isolation · (গ) Atomicity · (ঘ) Consistency
+</Solution>
+</Quest>
+
+<Quest id="3" title="Deadlock-মুক্ত transfer">
+ওপরের `transfer` Procedure এমনভাবে বদলাও যাতে দুটো অ্যাকাউন্ট সবসময় ছোট `id` আগে, এই ক্রমে Lock হয়।
+
+<Solution>
+```sql
+DELIMITER //
+CREATE PROCEDURE transfer_safe(IN p_from INT, IN p_to INT, IN p_amount DECIMAL(12,2))
+BEGIN
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  START TRANSACTION;
+    -- দুটো Row একসাথে, id-র ক্রমে Lock
+    SELECT id FROM accounts WHERE id IN (p_from, p_to) ORDER BY id FOR UPDATE;
+
+    UPDATE accounts SET balance = balance - p_amount WHERE id = p_from;
+    IF ROW_COUNT() = 0 THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'প্রেরকের অ্যাকাউন্ট নেই';
+    END IF;
+
+    UPDATE accounts SET balance = balance + p_amount WHERE id = p_to;
+    IF ROW_COUNT() = 0 THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'প্রাপকের অ্যাকাউন্ট নেই';
+    END IF;
+
+    INSERT INTO transfers (from_id, to_id, amount) VALUES (p_from, p_to, p_amount);
+  COMMIT;
+END //
+DELIMITER ;
+```
+
+`SIGNAL` নিজেও একটা `SQLEXCEPTION`, তাই Handler ধরে `ROLLBACK` করে দেয়।
+</Solution>
+</Quest>
+
+<Boss title="মাসের শেষের বেতন">
+স্কুল প্রতি মাসে শিক্ষকদের বেতন দেয়। ধরো `bank`-এ স্কুলের অ্যাকাউন্ট `id = 100`। একটা Procedure `pay_salaries(p_month DATE)` লেখো, যেটা:
+
+1. স্কুলের অ্যাকাউন্টে মোট বেতনের সমান টাকা না থাকলে কিছুই করবে না, error দেবে।
+2. প্রত্যেক শিক্ষকের অ্যাকাউন্টে বেতন জমা দেবে আর `transfers`-এ লিখবে।
+3. একই মাসের বেতন দুবার দেওয়া যাবে না।
+4. মাঝপথে যেকোনো সমস্যায় পুরোটা বাতিল।
+
+সরলতার জন্য ধরে নাও একটা টেবিল আছে `payroll(account_id, salary)`, আর আরেকটা `salary_runs(month PRIMARY KEY)`।
+
+<Solution title="ইঙ্গিত ১">
+পুরোটা একটা Transaction। প্রথম ধাপেই স্কুলের অ্যাকাউন্ট `SELECT ... FOR UPDATE` দিয়ে তালাবদ্ধ করো, যাতে মাঝপথে অন্য কেউ টাকা তুলে নিতে না পারে।
+</Solution>
+
+<Solution title="ইঙ্গিত ২">
+"একই মাস দুবার না": `salary_runs`-এর Primary Key-ই সেটা পাহারা দেবে; আগে সেখানে `INSERT` করো। আর মাঝপথের যেকোনো error ধরতে `DECLARE EXIT HANDLER FOR SQLEXCEPTION` দিয়ে `ROLLBACK`, তারপর `RESIGNAL`।
+</Solution>
+
+<Solution>
+```sql
+CREATE TABLE payroll (
+  account_id INT PRIMARY KEY,
+  salary     DECIMAL(12,2) NOT NULL CHECK (salary > 0),
+  FOREIGN KEY (account_id) REFERENCES accounts(id)
+);
+CREATE TABLE salary_runs (
+  month  DATE PRIMARY KEY,
+  run_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO accounts VALUES (100, 'স্কুল', 100000.00), (101, 'হাসান স্যার', 0), (102, 'রুমানা ম্যাডাম', 0);
+INSERT INTO payroll VALUES (101, 45000.00), (102, 38000.00);
+
+DELIMITER //
+CREATE PROCEDURE pay_salaries(IN p_month DATE)
+BEGIN
+  DECLARE v_total DECIMAL(12,2);
+  DECLARE v_school DECIMAL(12,2);
+
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    RESIGNAL;
+  END;
+
+  START TRANSACTION;
+    -- ৩: প্রথমেই মাসটা "দাবি" করি; দ্বিতীয়বার চালালে PRIMARY KEY-তে error
+    INSERT INTO salary_runs (month) VALUES (p_month);
+
+    -- ১: স্কুলের অ্যাকাউন্ট Lock করে ব্যালান্স দেখি
+    SELECT balance INTO v_school FROM accounts WHERE id = 100 FOR UPDATE;
+    SELECT SUM(salary) INTO v_total FROM payroll;
+
+    IF v_school < v_total THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'স্কুলের অ্যাকাউন্টে যথেষ্ট টাকা নেই';
+    END IF;
+
+    -- ২: একটা UPDATE-এ সবার জমা, আর একটায় স্কুল থেকে কাটা
+    UPDATE accounts a
+    JOIN payroll p ON p.account_id = a.id
+    SET a.balance = a.balance + p.salary;
+
+    UPDATE accounts SET balance = balance - v_total WHERE id = 100;
+
+    INSERT INTO transfers (from_id, to_id, amount)
+    SELECT 100, account_id, salary FROM payroll;
+  COMMIT;
+END //
+DELIMITER ;
+
+CALL pay_salaries('2026-11-01');   -- সফল: স্কুল 17000, হাসান 45000, রুমানা 38000
+CALL pay_salaries('2026-11-01');   -- ERROR 1062: Duplicate entry '2026-11-01' ...
+CALL pay_salaries('2026-12-01');   -- ERROR: যথেষ্ট টাকা নেই (17000 < 83000), salary_runs-এও কিছু থাকল না
+```
+
+কৌশলগুলো খেয়াল করো: `salary_runs`-এ আগে `INSERT` করে মাসটা "দখল" করা, যাতে দুইজন একসাথে চালালেও দ্বিতীয়জন Primary Key-তে আটকে যায় (Constraint-কে Lock হিসেবে ব্যবহার); `FOR UPDATE` দিয়ে স্কুলের ব্যালান্স পড়া; আর `UPDATE ... JOIN` দিয়ে একবারে সবার জমা। শেষ `CALL`-এ error-এর পর `salary_runs`-এর ডিসেম্বরের লাইনটাও `ROLLBACK` হয়ে গেছে, তাই টাকা এলে আবার চালানো যাবে।
+</Solution>
+</Boss>
+
+<Summary slug="level-18" />
+
+<Checkpoint questions={[
+  { q: "MySQL-এ Transaction-এর ভেতরে একটা কমান্ড error দিলে কী হয়?", options: ["পুরো Transaction নিজে থেকে বাতিল", "শুধু সেই কমান্ড বাতিল, Transaction খোলা থাকে", "সার্ভার বন্ধ হয়", "আগের সব কাজ COMMIT হয়"], answer: 1, why: "তাই error হলে নিজেকেই ROLLBACK করতে হয়।" },
+  { q: "ACID-এর 'D' কী নিশ্চিত করে?", options: ["ডুপ্লিকেট নেই", "COMMIT হলে সার্ভার ক্র্যাশেও ডেটা থাকবে", "ডেটা এনক্রিপ্টেড", "Deadlock হবে না"], answer: 1, why: "Durability: স্থায়িত্ব।" },
+  { q: "InnoDB-র ডিফল্ট Isolation Level কোনটা?", options: ["READ UNCOMMITTED", "READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE"], answer: 2, why: "SELECT @@transaction_isolation দেখায় REPEATABLE-READ।" },
+  { q: "একই Row দুবার পড়ে দুই রকম মান পাওয়াকে কী বলে?", options: ["Dirty Read", "Non-repeatable Read", "Phantom Read", "Deadlock"], answer: 1, why: "মাঝখানে অন্য কেউ বদলে COMMIT করেছে।" },
+  { q: "Deadlock এড়ানোর একটা ভালো কৌশল কোনটা?", options: ["Transaction লম্বা রাখা", "সবসময় একই ক্রমে Row Lock করা", "Index মুছে ফেলা", "autocommit বন্ধ রাখা"], answer: 1, why: "সবাই একই ক্রমে Lock চাইলে অপেক্ষা হয়, কিন্তু চক্র তৈরি হয় না।" }
+]} />

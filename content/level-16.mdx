@@ -1,0 +1,326 @@
+<Mission>
+- **Index** কী, আর কেন বইয়ের শেষের "নির্ঘণ্ট"-এর মতো কাজ করে
+- `CREATE INDEX`, Composite Index, আর **Leftmost Prefix** নিয়ম
+- `EXPLAIN` আর `EXPLAIN ANALYZE` দিয়ে MySQL-এর মনের কথা পড়া
+- কোন Query Index থাকা সত্ত্বেও Index ব্যবহার করতে পারে না
+- Index-এর দাম: কেন সব Column-এ Index দেওয়া বোকামি
+</Mission>
+
+<Analogy>
+৫০০ পাতার একটা বইয়ে "Foreign Key" শব্দটা কোথায় কোথায় আছে খুঁজতে হবে। উপায় দুটো: প্রথম পাতা থেকে শেষ পাতা পর্যন্ত প্রতিটা লাইন পড়া, অথবা বইয়ের শেষে **নির্ঘণ্ট** (Index) খুলে দেখা "Foreign Key: পৃষ্ঠা ৮৭, ২১২"। Database-এর Index ঠিক এই নির্ঘণ্ট। প্রথম উপায়ের নাম **Full Table Scan**।
+</Analogy>
+
+## পরীক্ষাগার: এক লাখ লাইনের টেবিল
+
+১০টা Row-এ সব Query-ই দ্রুত, তাই পার্থক্য বোঝা যায় না। বেতন পরিশোধের একটা কৃত্রিম টেবিল বানাই, এক লাখ লাইনের। (এটা শুধু পরীক্ষার জন্য; ইচ্ছে করেই Foreign Key দিইনি।)
+
+```sql
+USE school;
+CREATE TABLE payments (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  month      DATE NOT NULL,
+  amount     DECIMAL(8,2) NOT NULL,
+  method     ENUM('নগদ', 'bKash', 'Nagad', 'ব্যাংক') NOT NULL,
+  paid_at    DATETIME NOT NULL
+);
+
+-- এক লাখ লাইন বানাতে Recursive CTE-কে ১ লাখ ধাপ পর্যন্ত যেতে দিই (MySQL-এ ডিফল্ট সীমা ১০০০)
+SET SESSION cte_max_recursion_depth = 100000;
+
+INSERT INTO payments (student_id, month, amount, method, paid_at)
+WITH RECURSIVE seq (n) AS (
+  SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 100000
+)
+SELECT 1 + (n * 7919) % 5000,
+       DATE_ADD('2024-01-01', INTERVAL (n % 30) MONTH),
+       500 + (n % 11) * 50,
+       ELT(1 + n % 4, 'নগদ', 'bKash', 'Nagad', 'ব্যাংক'),
+       DATE_ADD('2024-01-01 09:00:00', INTERVAL n * 13 MINUTE)
+FROM seq;
+
+ANALYZE TABLE payments;   -- MySQL-কে নতুন ডেটার পরিসংখ্যান জানিয়ে দিই
+```
+
+`WITH RECURSIVE` নিজেকেই বারবার ডেকে ১ থেকে ১০০০০০ পর্যন্ত সংখ্যা বানাল, আর প্রতিটা সংখ্যা থেকে একটা কৃত্রিম লাইন। (MariaDB-তে `cte_max_recursion_depth` নেই; সেখানে লাইনটা বাদ দিলেই চলবে।)
+
+## EXPLAIN: MySQL কী করবে, আগে জেনে নাও
+
+যেকোনো `SELECT`-এর আগে `EXPLAIN` লিখলে MySQL Query চালায় না, শুধু বলে **কীভাবে** চালাত:
+
+```sql
+EXPLAIN SELECT * FROM payments WHERE student_id = 42;
+```
+
+| type | possible_keys | key | rows | filtered | Extra |
+| --- | --- | --- | --- | --- | --- |
+| ALL | NULL | NULL | 100224 | 10.00 | Using where |
+
+(সব Column দেখাইনি, জরুরিগুলো রেখেছি।)
+
+- **`type: ALL`** মানে Full Table Scan: প্রতিটা লাইন পড়বে। এটা সবচেয়ে খারাপ ধরন।
+- **`key: NULL`** মানে কোনো Index ব্যবহার হচ্ছে না।
+- **`rows: 100224`** হলো আনুমানিক কতগুলো লাইন পড়তে হবে (পরিসংখ্যানভিত্তিক অনুমান, তাই ঠিক ১০০০০০ না)।
+
+## Index বানাও
+
+```sql
+CREATE INDEX idx_payments_student ON payments (student_id);
+
+EXPLAIN SELECT * FROM payments WHERE student_id = 42;
+```
+
+| type | possible_keys | key | ref | rows | filtered |
+| --- | --- | --- | --- | --- | --- |
+| ref | idx_payments_student | idx_payments_student | const | 20 | 100.00 |
+
+এক লাখ থেকে **২০**! MySQL এখন Index দিয়ে সরাসরি ছাত্র ৪২-এর ২০টা লাইনে চলে যায়।
+
+### আসল সময় মাপো: EXPLAIN ANALYZE
+
+`EXPLAIN ANALYZE` (MySQL 8.0.18+) Query সত্যিই চালায়, আর প্রতিটা ধাপে কত সময় লাগল বলে। আমাদের পরীক্ষায়:
+
+```text
+Index থাকলে:
+-> Index lookup on payments using idx_payments_student (student_id=42)
+   (actual time=0.0952..0.0989 rows=20 loops=1)
+
+Index ছাড়া:
+-> Filter: (payments.student_id = 42)  (actual time=1.76..31.5 rows=20 loops=1)
+    -> Table scan on payments  (actual time=1.18..26.5 rows=100000 loops=1)
+```
+
+প্রায় ০.১ মিলিসেকেন্ড বনাম ৩১ মিলিসেকেন্ড, তিনশো গুণের মতো পার্থক্য। তোমার কম্পিউটারে সংখ্যাগুলো আলাদা আসবে, কিন্তু অনুপাতটা কাছাকাছি থাকবে। আর টেবিল এক কোটি লাইনের হলে Full Scan-এর সময় প্রায় একশো গুণ বাড়বে, অথচ Index lookup প্রায় একই থাকবে। (MariaDB-তে একই কাজ করে `ANALYZE SELECT ...`।)
+
+## ভেতরে কী আছে: B-Tree
+
+MySQL-এর InnoDB Index সাধারণত একটা **B+Tree**: একটা সাজানো, ভারসাম্যপূর্ণ গাছ। মূল (Root) থেকে শুরু করে প্রতিটা ধাপে "বাঁয়ে যাব না ডানে" ঠিক করে খুব অল্প কয়েক ধাপেই যেকোনো মানে পৌঁছানো যায়। অভিধানে শব্দ খোঁজার মতো: "স" খুঁজতে প্রথম পাতা থেকে শুরু করো না, মাঝামাঝি খুলে এগোও-পিছাও।
+
+দুটো জিনিস মনে রাখো:
+
+- **Primary Key নিজেই একটা Index।** InnoDB টেবিলের ডেটা Primary Key অনুযায়ী সাজিয়েই রাখে (**Clustered Index**)। তাই `WHERE id = 5` সবসময় দ্রুত।
+- **`UNIQUE` Constraint-ও একটা Index বানায়।** আর InnoDB প্রতিটা Foreign Key Column-এ নিজে থেকেই Index বানিয়ে নেয়, যদি আগে থেকে না থাকে।
+
+```sql
+SHOW INDEX FROM payments;
+```
+
+## Composite Index আর Leftmost Prefix
+
+একাধিক Column মিলিয়ে Index:
+
+```sql
+CREATE INDEX idx_payments_month_method ON payments (month, method);
+
+EXPLAIN SELECT * FROM payments WHERE month = '2025-06-01' AND method = 'bKash';
+```
+
+| type | key | ref | rows |
+| --- | --- | --- | --- |
+| ref | idx_payments_month_method | const,const | 1667 |
+
+```sql
+EXPLAIN SELECT * FROM payments WHERE method = 'bKash';
+```
+
+| type | key | rows |
+| --- | --- | --- |
+| ALL | NULL | 100224 |
+
+শুধু `method` দিয়ে খুঁজলে Index **কাজে লাগল না!** কারণ Composite Index টেলিফোন ডিরেক্টরির মতো সাজানো: আগে `month`, তারপর একই মাসের ভেতরে `method`। শুধু "bKash" দিয়ে খুঁজতে গেলে প্রতিটা মাসে আলাদা করে খুঁজতে হবে।
+
+<Remember>
+**Leftmost Prefix নিয়ম: `(a, b, c)` Index কাজে লাগে `a`, `(a, b)`, বা `(a, b, c)` দিয়ে খুঁজলে; শুধু `b` বা `c` দিয়ে খুঁজলে না।** তাই Composite Index-এ যে Column দিয়ে সবচেয়ে বেশি খোঁজা হয় (আর যেটা `=` দিয়ে খোঁজা হয়), সেটা আগে রাখো।
+</Remember>
+
+## যখন Index থাকলেও কাজ করে না
+
+### ১. Column-এর ওপর Function
+
+```sql
+CREATE INDEX idx_payments_paid_at ON payments (paid_at);
+
+EXPLAIN SELECT * FROM payments WHERE DATE(paid_at) = '2025-06-15';
+```
+
+| type | possible_keys | key | rows |
+| --- | --- | --- | --- |
+| ALL | NULL | NULL | 100224 |
+
+Index আছে, কিন্তু `possible_keys`-ও `NULL`! Index সাজানো আছে `paid_at` অনুযায়ী, `DATE(paid_at)` অনুযায়ী না। একই কথা লেখার সাথে হিসাবেও: `WHERE student_id + 0 = 42` লিখলেও Index বাদ।
+
+সমাধান: Function টা Column থেকে সরিয়ে মানের দিকে নাও, একটা **পরিসর** হিসেবে:
+
+```sql
+EXPLAIN SELECT * FROM payments
+WHERE paid_at >= '2025-06-15' AND paid_at < '2025-06-16';
+```
+
+| type | key | rows | Extra |
+| --- | --- | --- | --- |
+| range | idx_payments_paid_at | 111 | Using index condition |
+
+(MySQL 8.0.13 থেকে আরেকটা উপায় আছে: সরাসরি Expression-এর ওপর Index, `CREATE INDEX ... ON payments ((DATE(paid_at)))`।)
+
+### ২. শুরুতে `%` দেওয়া LIKE
+
+`WHERE name LIKE 'রা%'` Index ব্যবহার করতে পারে (শুরুটা জানা, অভিধানে "রা" পাতায় যাও)। `WHERE name LIKE '%রা%'` পারে না (শুরুটাই অজানা)। লেভেল ৪-এর বাগ মনস্টার ৪-এর রহস্য এটাই। লেখার ভেতরে খোঁজার জন্য MySQL-এ আছে `FULLTEXT` Index।
+
+### ৩. টেবিলের বেশির ভাগ লাইন চাইলে
+
+```sql
+EXPLAIN SELECT * FROM payments
+WHERE paid_at >= '2025-01-01' AND paid_at < '2026-01-01';
+```
+
+| type | possible_keys | key | rows | filtered |
+| --- | --- | --- | --- | --- |
+| ALL | idx_payments_paid_at | NULL | 100224 | 50.00 |
+
+`possible_keys`-এ Index আছে, তবু MySQL নেয়নি! ২০২৫ সালের লাইন প্রায় ৪০ হাজার, মোটের ৪০%। এত লাইনের জন্য নির্ঘণ্ট থেকে একটা একটা করে পাতা উল্টানোর চেয়ে পুরো বই একবারে পড়ে যাওয়াই দ্রুত। MySQL-এর **Query Optimizer** খরচ হিসাব করে এই সিদ্ধান্ত নেয়। এক মাসের পরিসর দিলে (প্রায় ৩ হাজার লাইন) সে ঠিকই Index নেয়।
+
+একটা Index কতটা "ছাঁকতে" পারে তাকে বলে **Selectivity**। `student_id` (৫০০০ রকম মান) উচ্চ Selectivity, ভালো Index। `method` (মাত্র ৪ রকম) নিম্ন Selectivity; একা এর Index প্রায় কাজে লাগে না।
+
+## Covering Index: টেবিলে না গিয়েই উত্তর
+
+```sql
+CREATE INDEX idx_cover ON payments (student_id, amount);
+EXPLAIN SELECT student_id, amount FROM payments WHERE student_id = 42;
+```
+
+| type | key | rows | Extra |
+| --- | --- | --- | --- |
+| ref | idx_cover | 20 | Using index |
+
+`Extra: Using index` মানে Query-র দরকারি সব Column Index-এর ভেতরেই আছে, MySQL-কে মূল টেবিলে যেতেই হয়নি। নির্ঘণ্টেই উত্তর লেখা থাকলে বইয়ের পাতা খোলার দরকার কী? এটাও একটা কারণ, কেন `SELECT *` এড়িয়ে চলা ভালো।
+
+```sql
+DROP INDEX idx_cover ON payments;
+```
+
+## Index-এর দাম
+
+Index বিনামূল্যে না:
+
+- **লেখা ধীর হয়।** প্রতিটা `INSERT`, `UPDATE`, `DELETE`-এ প্রতিটা Index-ও হালনাগাদ করতে হয়। আমাদের পরীক্ষায় এক লাখ লাইন ঢোকাতে Index ছাড়া লেগেছিল প্রায় ০.৪৬ সেকেন্ড, তিনটা বাড়তি Index সহ প্রায় ০.৭২ সেকেন্ড।
+- **জায়গা লাগে।** প্রতিটা Index ডিস্কে আর মেমরিতে আলাদা জায়গা নেয়।
+- **ভুল Index বিভ্রান্ত করে।** অপ্রয়োজনীয় Index Optimizer-এর হিসাবও জটিল করে।
+
+<Tip title="কোথায় Index দেবে">
+**যে Column দিয়ে প্রায়ই `WHERE`, `JOIN ... ON`, `ORDER BY` বা `GROUP BY` করা হয়, আর যার Selectivity ভালো,** সেখানে। অনুমানে না, আগে ধীর Query খুঁজে `EXPLAIN` দিয়ে দেখো, তারপর Index দাও, তারপর আবার মাপো। MySQL-এর **Slow Query Log** চালু করলে সার্ভার নিজেই ধীর Query-র তালিকা রাখে।
+</Tip>
+
+## EXPLAIN-এর `type` সারাংশ (ভালো থেকে খারাপ)
+
+| type | মানে |
+| --- | --- |
+| `system` / `const` | সর্বোচ্চ একটা লাইন, Primary Key বা UNIQUE দিয়ে (`WHERE id = 1`) |
+| `eq_ref` | JOIN-এ প্রতিটা লাইনের জন্য অন্য টেবিলের ঠিক একটা লাইন (PK/UNIQUE দিয়ে) |
+| `ref` | Index দিয়ে মিলে যাওয়া কয়েকটা লাইন |
+| `range` | Index-এর একটা পরিসর (`BETWEEN`, `>`, `<`, `IN`) |
+| `index` | পুরো Index পড়া (টেবিলের চেয়ে ছোট, তবু সব) |
+| `ALL` | পুরো টেবিল পড়া |
+
+<BugMonster title="গতির দানব">
+
+**১. Column-এ Function: `WHERE YEAR(paid_at) = 2025`।** পরিসরে লেখো: `paid_at >= '2025-01-01' AND paid_at < '2026-01-01'`।
+
+**২. Composite Index-এর ভুল ক্রম।** `(method, month)` দিয়ে বানিয়ে `WHERE month = ...` খোঁজা। Leftmost Prefix।
+
+**৩. Type-এর অমিল।** `phone` Column `VARCHAR`, কিন্তু খোঁজা হলো `WHERE phone = 1711000001` (সংখ্যা)। MySQL প্রতিটা লাইনের লেখাকে সংখ্যায় বদলে তুলনা করে, ফলে Index বাদ। উদ্ধৃতি দাও: `WHERE phone = '01711000001'`।
+
+**৪. সব Column-এ Index।** লেখা ধীর, জায়গা নষ্ট। মেপে দাও।
+
+**৫. `EXPLAIN`-এর `rows`-কে আসল সংখ্যা ভাবা।** এটা অনুমান। আসল সংখ্যা আর সময়ের জন্য `EXPLAIN ANALYZE`।
+
+</BugMonster>
+
+<Quest id="1" title="EXPLAIN পড়ো">
+`EXPLAIN SELECT * FROM students WHERE id = 3;` আর `EXPLAIN SELECT * FROM students WHERE city = 'ঢাকা';` চালাও। দুটোর `type` আর `key` কী, কেন?
+
+<Solution>
+প্রথমটা `type: const`, `key: PRIMARY`, কারণ Primary Key দিয়ে ঠিক একটা লাইন। দ্বিতীয়টা `type: ALL`, `key: NULL`, কারণ `city`-তে কোনো Index নেই। (মাত্র ১০টা লাইনের টেবিলে MySQL Index থাকলেও হয়তো Full Scan বেছে নিত।)
+</Solution>
+</Quest>
+
+<Quest id="2" title="Index কাজে লাগাও">
+এই Query দ্রুত করো, আগে আর পরে `EXPLAIN` দেখিয়ে: `SELECT * FROM payments WHERE MONTH(paid_at) = 6 AND YEAR(paid_at) = 2025;`
+
+<Solution>
+```sql
+-- আগে: type ALL
+EXPLAIN SELECT * FROM payments WHERE MONTH(paid_at) = 6 AND YEAR(paid_at) = 2025;
+-- পরে: type range, key idx_payments_paid_at
+EXPLAIN SELECT * FROM payments WHERE paid_at >= '2025-06-01' AND paid_at < '2025-07-01';
+```
+
+`idx_payments_paid_at` আগে থেকেই ছিল; শুধু Query-টা এমনভাবে লিখতে হলো যাতে Index ব্যবহার করা যায়।
+</Solution>
+</Quest>
+
+<Quest id="3" title="ক্রম ঠিক করো">
+অ্যাপে সবচেয়ে বেশি চলে এমন দুটো Query: (ক) `WHERE student_id = ? AND month = ?` আর (খ) `WHERE student_id = ?`। একটাই Composite Index দিয়ে দুটোকে দ্রুত করতে চাইলে Column-এর ক্রম কী হবে?
+
+<Solution>
+`(student_id, month)`। Leftmost Prefix অনুযায়ী এটা (ক) আর (খ) দুটোতেই কাজ করবে। `(month, student_id)` দিলে (খ) কাজ করত না। (তখন আলাদা `idx_payments_student`-টা অপ্রয়োজনীয় হয়ে যায়, মুছে দেওয়া যায়।)
+</Solution>
+</Quest>
+
+<Boss title="ধীর রিপোর্টের তদন্ত">
+হিসাবরক্ষক অভিযোগ করলেন, এই রিপোর্টটা খুব ধীর:
+
+```sql
+SELECT student_id, SUM(amount) AS paid
+FROM payments
+WHERE method = 'bKash' AND DATE_FORMAT(month, '%Y') = '2025'
+GROUP BY student_id
+ORDER BY paid DESC
+LIMIT 10;
+```
+
+`EXPLAIN` দিয়ে সমস্যা খুঁজে বের করো, Query নতুন করে লেখো, আর দরকার হলে একটা Index প্রস্তাব করো। তোমার Index কেন `(method, month)` ক্রমে, `(month, method)` না, ব্যাখ্যা করো।
+
+<Solution title="ইঙ্গিত ১">
+`EXPLAIN`-এ `type: ALL` দেখলে বুঝবে পুরো টেবিল পড়ছে। কারণ খোঁজো `WHERE`-এ: Column-কে Function-এ (`DATE_FORMAT`) মুড়ালে Index আর কাজে লাগে না।
+</Solution>
+
+<Solution title="ইঙ্গিত ২">
+তারিখের শর্তটা সীমা হিসেবে লেখো (`month >= '2025-01-01' AND month < '2026-01-01'`)। Composite Index-এ সমান (`=`) শর্তের Column আগে, সীমার (Range) Column পরে।
+</Solution>
+
+<Solution>
+**সমস্যা:** `DATE_FORMAT(month, '%Y')` Column-এর ওপর Function, তাই `month`-এর Index অকেজো; `EXPLAIN` দেখাবে `type: ALL`।
+
+**নতুন Query:**
+
+```sql
+SELECT student_id, SUM(amount) AS paid
+FROM payments
+WHERE method = 'bKash'
+  AND month >= '2025-01-01' AND month < '2026-01-01'
+GROUP BY student_id
+ORDER BY paid DESC
+LIMIT 10;
+```
+
+**Index:**
+
+```sql
+CREATE INDEX idx_payments_method_month ON payments (method, month, student_id, amount);
+```
+
+- `method` আগে, কারণ এটা `=` দিয়ে খোঁজা হয়। Composite Index-এ `=`-ওয়ালা Column আগে, পরিসরওয়ালা (`>=`, `<`) পরে। পরিসর দিয়ে খোঁজার পরের Column-গুলো খোঁজায় আর সাহায্য করতে পারে না, তাই `(month, method)` দিলে `method`-এর অংশটা প্রায় নষ্ট হতো।
+- শেষে `student_id` আর `amount` যোগ করায় এটা **Covering Index**: `EXPLAIN`-এ `Using index` দেখাবে, মূল টেবিলে যেতেই হবে না।
+- কাজ শেষে মেপে দেখো (`EXPLAIN ANALYZE`), আর মনে রেখো, এই Index প্রতিটা নতুন পরিশোধ লেখাকে একটু ধীর করবে। রিপোর্ট দিনে একবার চললে হয়তো এই দাম দেওয়ার মতো না; প্রতি মিনিটে চললে অবশ্যই।
+</Solution>
+</Boss>
+
+<Summary slug="level-16" />
+
+<Checkpoint questions={[
+  { q: "EXPLAIN-এ type: ALL মানে কী?", options: ["সব Index ব্যবহার হচ্ছে", "পুরো টেবিল পড়া হচ্ছে (Full Table Scan)", "সব Row ফেরত আসবে", "Query সবচেয়ে দ্রুত"], answer: 1, why: "ALL হলো সবচেয়ে খারাপ type: প্রতিটা লাইন পড়তে হবে।" },
+  { q: "(a, b) Composite Index কোন Query-তে কাজে লাগে না?", options: ["WHERE a = 1", "WHERE a = 1 AND b = 2", "WHERE b = 2", "WHERE a = 1 ORDER BY b"], answer: 2, why: "Leftmost Prefix: প্রথম Column বাদ দিয়ে খুঁজলে Index-এর সাজানো ক্রম কাজে আসে না।" },
+  { q: "WHERE YEAR(paid_at) = 2025 কেন paid_at-এর Index ব্যবহার করে না?", options: ["YEAR Function নেই", "Column-এর ওপর Function বসালে Index-এর সাজানো মান আর মেলে না", "Index শুধু সংখ্যায় কাজ করে", "২০২৫ ভবিষ্যৎ"], answer: 1, why: "পরিসর হিসেবে লেখো: paid_at >= '2025-01-01' AND paid_at < '2026-01-01'।" },
+  { q: "Index-এর একটা অসুবিধা কোনটা?", options: ["SELECT ধীর হয়", "INSERT/UPDATE/DELETE ধীর হয় আর জায়গা লাগে", "ডেটা হারায়", "JOIN কাজ করে না"], answer: 1, why: "প্রতিটা লেখার সাথে প্রতিটা Index-ও হালনাগাদ করতে হয়।" },
+  { q: "EXPLAIN-এর Extra-তে 'Using index' মানে?", options: ["Index নেই", "Covering Index: মূল টেবিলে না গিয়ে Index থেকেই উত্তর", "Index ভাঙা", "Full Scan"], answer: 1, why: "দরকারি সব Column Index-এর ভেতরেই আছে।" }
+]} />

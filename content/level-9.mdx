@@ -1,0 +1,339 @@
+<Mission>
+- **Constraint** কী, আর কেন ডেটার নিয়ম Database-এই বসানো উচিত
+- `NOT NULL`, `DEFAULT`, `UNIQUE`, `CHECK`
+- `PRIMARY KEY` (একক আর যৌথ), আর `FOREIGN KEY` দিয়ে দুই টেবিলের সম্পর্ক পাহারা দেওয়া
+- `ON DELETE CASCADE` আর `SET NULL`: মা-টেবিলের Row মুছলে সন্তানদের কী হবে
+</Mission>
+
+<Story>
+এতদিন আমাদের `students` টেবিলে যে কেউ যা খুশি ঢোকাতে পারত: নাম ছাড়া ছাত্র, GPA 9.99, একই ফোন নম্বরে দুজন। অ্যাপের কোডে যাচাই করা যায় ঠিকই, কিন্তু কাল অন্য কেউ আরেকটা অ্যাপ বানাবে, বা কেউ phpMyAdmin থেকে সরাসরি ডেটা বদলাবে। তখন? Database-এর দরজাতেই একজন পাহারাদার বসাতে হবে। সেই পাহারাদারের নাম **Constraint**।
+</Story>
+
+## জোন ২-এর নতুন খাতা
+
+এই লেভেল থেকে আমাদের স্কুলে আরও তিনটা টেবিল যোগ হচ্ছে: শিক্ষক, বিষয়, আর নম্বর। পুরো স্ক্রিপ্টটা নিচে; এটা চালালে পুরোনো `school` মুছে নতুন করে সব বানাবে। চাইলে [school-zone2.sql](/sql/school-zone2.sql) ফাইলটা নামিয়ে phpMyAdmin-এর **Import** দিয়েও চালাতে পারো।
+
+```sql
+DROP DATABASE IF EXISTS school;
+CREATE DATABASE school CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE school;
+
+CREATE TABLE teachers (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(100) NOT NULL,
+  phone      VARCHAR(15) UNIQUE,
+  salary     DECIMAL(10,2) NOT NULL CHECK (salary > 0),
+  head_id    INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (head_id) REFERENCES teachers(id)
+);
+
+CREATE TABLE subjects (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(50) NOT NULL UNIQUE,
+  teacher_id INT NULL,
+  FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE SET NULL
+);
+
+CREATE TABLE students (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(100) NOT NULL,
+  roll       INT NOT NULL,
+  class      TINYINT NOT NULL CHECK (class BETWEEN 6 AND 10),
+  section    CHAR(1) NOT NULL DEFAULT 'A',
+  city       VARCHAR(50),
+  gpa        DECIMAL(3,2) CHECK (gpa BETWEEN 0 AND 5),
+  birth_date DATE,
+  phone      VARCHAR(15) UNIQUE,
+  UNIQUE (class, section, roll)
+);
+
+CREATE TABLE marks (
+  student_id INT NOT NULL,
+  subject_id INT NOT NULL,
+  score      TINYINT UNSIGNED NOT NULL CHECK (score <= 100),
+  PRIMARY KEY (student_id, subject_id),
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+  FOREIGN KEY (subject_id) REFERENCES subjects(id)
+);
+
+INSERT INTO teachers (name, phone, salary, head_id) VALUES
+  ('হাসান স্যার', '01700000101', 45000.00, NULL),
+  ('রুমানা ম্যাডাম', '01700000102', 38000.00, 1),
+  ('কামাল স্যার', '01700000103', 36000.00, 1),
+  ('শারমিন ম্যাডাম', '01700000104', 30000.00, 2);
+
+INSERT INTO subjects (name, teacher_id) VALUES
+  ('গণিত', 1), ('বাংলা', 2), ('বিজ্ঞান', 3), ('ইংরেজি', NULL);
+
+INSERT INTO students (name, roll, class, section, city, gpa, birth_date, phone) VALUES
+  ('রাফি', 1, 8, 'A', 'ঢাকা', 4.50, '2011-03-14', '01711000001'),
+  ('নুসরাত', 2, 8, 'A', 'চট্টগ্রাম', 5.00, '2011-07-02', '01811000002'),
+  ('তানভীর', 3, 8, 'B', 'ঢাকা', 3.75, '2010-12-25', NULL),
+  ('মীম', 4, 9, 'A', 'সিলেট', 4.25, '2010-05-19', '01911000004'),
+  ('আরিফ', 5, 9, 'B', 'রাজশাহী', 2.90, '2009-11-30', NULL),
+  ('সাদিয়া', 6, 9, 'A', 'ঢাকা', 4.80, '2010-01-08', '01611000006'),
+  ('জুবায়ের', 7, 10, 'A', 'খুলনা', 3.50, '2009-08-21', '01511000007'),
+  ('ফারিহা', 8, 10, 'B', 'চট্টগ্রাম', NULL, '2009-04-11', '01311000008'),
+  ('ইমরান', 9, 10, 'A', 'ঢাকা', 4.00, '2008-10-03', NULL),
+  ('লামিয়া', 10, 8, 'B', 'বরিশাল', 4.95, '2011-02-27', '01711000010');
+
+INSERT INTO marks (student_id, subject_id, score) VALUES
+  (1, 1, 85), (1, 2, 78), (1, 3, 90),
+  (2, 1, 98), (2, 2, 92), (2, 3, 95),
+  (3, 1, 70), (3, 2, 75), (3, 3, 68),
+  (4, 1, 88), (4, 2, 80), (4, 3, 82),
+  (5, 1, 55), (5, 2, 62), (5, 3, 48),
+  (6, 1, 92), (6, 2, 88), (6, 3, 94),
+  (7, 1, 65), (7, 2, 72), (7, 3, 70),
+  (9, 1, 80), (9, 2, 76), (9, 3, 79),
+  (10, 1, 95), (10, 2, 97);
+```
+
+খেয়াল করো কয়েকটা জিনিস, পরের লেভেলগুলোতে এগুলো কাজে লাগবে: ফারিহার (`id` 8) কোনো নম্বর নেই, লামিয়া বিজ্ঞান পরীক্ষা দেয়নি, শারমিন ম্যাডামের কোনো বিষয় নেই, আর ইংরেজির কোনো শিক্ষক নেই।
+
+এবার একে একে প্রতিটা পাহারাদারকে পরীক্ষা করি। নিচের প্রতিটা ভুল Query MySQL ইচ্ছে করেই আটকে দেবে।
+
+## NOT NULL: খালি রাখা যাবে না
+
+```sql
+INSERT INTO students (roll, class) VALUES (11, 8);
+```
+
+<ErrorBox title="ERROR 1364">
+Field 'name' doesn't have a default value
+</ErrorBox>
+
+নাম ছাড়া ছাত্র হয় না। `NOT NULL` না থাকলে MySQL চুপচাপ `NULL` বসিয়ে দিত।
+
+## DEFAULT: না দিলে এটা বসাও
+
+```sql
+INSERT INTO students (name, roll, class) VALUES ('নতুন', 11, 8);
+SELECT name, section, city FROM students WHERE roll = 11;
+```
+
+| name | section | city |
+| --- | --- | --- |
+| নতুন | A | NULL |
+
+সেকশন দিইনি, তবু `'A'` বসেছে (`DEFAULT 'A'`)। শহরের কোনো `DEFAULT` নেই আর `NOT NULL`-ও না, তাই `NULL`। শিক্ষকদের `created_at`-এ `DEFAULT CURRENT_TIMESTAMP` আছে, তাই কেউ যোগ হলে সময়টা নিজে থেকে বসে যায়।
+
+```sql
+DELETE FROM students WHERE roll = 11;   -- পরীক্ষা শেষ, সরিয়ে দিই
+```
+
+## UNIQUE: একই মান দুবার না
+
+```sql
+INSERT INTO students (name, roll, class, phone) VALUES ('নকল', 11, 8, '01711000001');
+```
+
+<ErrorBox title="ERROR 1062">
+Duplicate entry '01711000001' for key 'students.phone'
+</ErrorBox>
+
+রাফির নম্বর আরেকজন নিতে পারবে না। মজার ব্যাপার: `UNIQUE` Column-এ একাধিক `NULL` থাকতে পারে (তানভীর, আরিফ, ইমরান তিনজনেরই ফোন `NULL`), কারণ "জানা নেই" আরেকটা "জানা নেই"-এর সমান না।
+
+**যৌথ UNIQUE**: একই ক্লাস আর সেকশনে একই রোল দুজনের হতে পারবে না, কিন্তু ক্লাস ৮-A-র রোল ১ আর ক্লাস ৯-A-র রোল ১ আলাদা মানুষ হতেই পারে:
+
+```sql
+INSERT INTO students (name, roll, class, section) VALUES ('নকল', 1, 8, 'A');
+```
+
+<ErrorBox title="ERROR 1062">
+Duplicate entry '8-A-1' for key 'students.class'
+</ErrorBox>
+
+## CHECK: নিজের নিয়ম
+
+```sql
+INSERT INTO students (name, roll, class, gpa) VALUES ('ভুল', 11, 8, 5.50);
+```
+
+<ErrorBox title="ERROR 3819">
+Check constraint 'students_chk_2' is violated.
+</ErrorBox>
+
+GPA ৫-এর বেশি হতে পারে না। ক্লাস ৩ দিতে চাইলে `students_chk_1` আটকাবে (আমাদের স্কুলে ক্লাস ৬ থেকে ১০)।
+
+<Tip title="Constraint-এর নাম দাও">
+`students_chk_2` দেখে বোঝা কঠিন কোন নিয়ম ভাঙল। নিজে নাম দিলে error মেসেজই সব বলে দেয়: **`CONSTRAINT chk_gpa_range CHECK (gpa BETWEEN 0 AND 5)`**। তখন error হবে `Check constraint 'chk_gpa_range' is violated`।
+</Tip>
+
+<Note title="পুরোনো সংস্করণে সাবধান">
+MySQL **8.0.16-এর আগে** `CHECK` লেখা যেত, কিন্তু MySQL সেটা চুপচাপ উপেক্ষা করত, কোনো যাচাই করত না! MariaDB 10.2 থেকে `CHECK` সত্যিই কাজ করে। তোমার সংস্করণ দেখতে: `SELECT VERSION();`।
+</Note>
+
+## PRIMARY KEY: প্রতিটা Row-এর পরিচয়পত্র
+
+`PRIMARY KEY` আসলে `NOT NULL` + `UNIQUE`, সাথে একটা বাড়তি মর্যাদা: প্রতিটা টেবিলে এটা **একটাই** থাকে, আর এটা দিয়েই Row-কে চেনা হয়। MySQL-এর InnoDB নিজের ভেতরে ডেটা এই Key অনুযায়ীই সাজিয়ে রাখে।
+
+`marks` টেবিলে কোনো `id` নেই। এখানে Primary Key দুটো Column মিলে: `(student_id, subject_id)`। একে বলে **Composite Key** (যৌথ Key)। একজন ছাত্রের একটা বিষয়ে নম্বর একবারই থাকবে:
+
+```sql
+INSERT INTO marks VALUES (1, 1, 60);  -- রাফির গণিতে আবার নম্বর?
+```
+
+<ErrorBox title="ERROR 1062">
+Duplicate entry '1-1' for key 'marks.PRIMARY'
+</ErrorBox>
+
+## FOREIGN KEY: সম্পর্কের পাহারাদার
+
+`marks.student_id` বলছে "এই নম্বরটা কোন ছাত্রের"। সেই ছাত্র যদি `students` টেবিলে না-ই থাকে? `FOREIGN KEY` সেটা হতে দেয় না:
+
+```sql
+INSERT INTO marks VALUES (99, 1, 80);  -- ৯৯ নম্বর id-র কোনো ছাত্র নেই
+```
+
+<ErrorBox title="ERROR 1452">
+Cannot add or update a child row: a foreign key constraint fails (`school`.`marks`, CONSTRAINT `marks_ibfk_1` FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE CASCADE)
+</ErrorBox>
+
+যে টেবিল অন্যকে দেখায় (`marks`) সে **Child**, যাকে দেখায় (`students`) সে **Parent**। এই নিশ্চয়তাকে বলে **Referential Integrity**: কোনো সন্তান এতিম থাকবে না।
+
+### মা চলে গেলে সন্তানের কী হবে?
+
+| নিয়ম | Parent Row মুছলে Child-এর কী হয় | আমাদের উদাহরণ |
+| --- | --- | --- |
+| `RESTRICT` / `NO ACTION` (ডিফল্ট) | মুছতেই দেবে না | যে বিষয়ের নম্বর আছে, সেটা মোছা যাবে না |
+| `CASCADE` | Child-ও সাথে সাথে মুছে যাবে | ছাত্র মুছলে তার সব নম্বরও মুছবে |
+| `SET NULL` | Child-এর Foreign Key `NULL` হয়ে যাবে | শিক্ষক চলে গেলে বিষয় থাকবে, শিক্ষকের ঘর খালি |
+
+```sql
+DELETE FROM subjects WHERE id = 1;   -- গণিত মুছতে চাই
+```
+
+<ErrorBox title="ERROR 1451">
+Cannot delete or update a parent row: a foreign key constraint fails (`school`.`marks`, CONSTRAINT `marks_ibfk_2` FOREIGN KEY (`subject_id`) REFERENCES `subjects` (`id`))
+</ErrorBox>
+
+গণিতের নম্বর আছে, তাই ডিফল্ট নিয়মে মুছতে দিল না। এটাই চাই।
+
+<Remember>
+**`CASCADE` খুব শক্তিশালী, তাই সাবধানে।** একটা `DELETE` দিয়ে একসাথে অনেক টেবিলের ডেটা মুছে যেতে পারে। ব্যাংকের মতো জায়গায় সাধারণত কিছুই মোছা হয় না; বরং `is_active = 0` জাতীয় একটা Column দিয়ে "মুছে ফেলা" চিহ্নিত করা হয়, যাকে বলে **Soft Delete**।
+</Remember>
+
+### একই টেবিলের দিকে Foreign Key
+
+`teachers.head_id` দেখাচ্ছে `teachers.id`-কেই: প্রত্যেক শিক্ষকের একজন বিভাগীয় প্রধান, যিনি নিজেও একজন শিক্ষক। হাসান স্যার সবার প্রধান, তাই তাঁর `head_id` `NULL`। এই সম্পর্ক লেভেল ১১-এর Self Join-এ কাজে লাগবে।
+
+## পরে Constraint যোগ বা বাদ
+
+```sql
+ALTER TABLE students ADD CONSTRAINT chk_roll_positive CHECK (roll > 0);
+ALTER TABLE students DROP CHECK chk_roll_positive;
+SHOW CREATE TABLE marks;   -- একটা টেবিলের সব Constraint দেখার সবচেয়ে সহজ উপায়
+```
+
+<BugMonster title="পাহারাদারের সাথে ঝগড়া">
+
+**১. Foreign Key বানাতেই error (`errno: 150` বা `Failed to open the referenced table`)।** সাধারণ কারণ: Parent টেবিল আগে বানানো হয়নি; দুই Column-এর Type মেলে না (`INT` বনাম `BIGINT`, বা `UNSIGNED` এক পাশে); Parent-এর Column-এ Index বা Key নেই। ক্রম মেনে চলো: আগে Parent, পরে Child।
+
+**২. `DROP TABLE students` আটকে যাচ্ছে।** অন্য টেবিল (`marks`) এর দিকে Foreign Key দিয়ে তাকিয়ে আছে। আগে Child টেবিল মোছো।
+
+**৩. `AUTO_INCREMENT`-এ ফাঁক।** ব্যর্থ `INSERT`, `DELETE` বা Rollback-এর পর `id` 11, 12 না এসে 13 আসতে পারে। এটা স্বাভাবিক; `id` শুধু পরিচয়, ক্রমিক নম্বর না। ফাঁক "ঠিক" করার চেষ্টা কোরো না।
+
+**৪. পুরোনো MySQL-এ `CHECK` কাজ না করা।** ওপরের নোট দেখো।
+
+</BugMonster>
+
+<Quest id="1" title="পাহারাদার পরীক্ষা">
+নিচের প্রতিটা Query চালানোর আগে অনুমান করো কোন Constraint আটকাবে, তারপর চালিয়ে মেলাও: (ক) শিক্ষকের বেতন -5000; (খ) ইংরেজি বিষয়ে কারো 101 নম্বর; (গ) দুইটা বিষয়ের নাম "গণিত"।
+
+<Solution>
+(ক) `CHECK (salary > 0)` → ERROR 3819; (খ) `CHECK (score <= 100)` → ERROR 3819; (গ) `subjects.name`-এর `UNIQUE` → ERROR 1062।
+
+```sql
+INSERT INTO teachers (name, salary) VALUES ('ভুল', -5000);
+INSERT INTO marks VALUES (1, 4, 101);
+INSERT INTO subjects (name) VALUES ('গণিত');
+```
+</Solution>
+</Quest>
+
+<Quest id="2" title="CASCADE দেখো">
+একটা পরীক্ষামূলক ছাত্র ঢোকাও, তাকে গণিতে একটা নম্বর দাও, তারপর ছাত্রটাকে মুছে দেখো `marks` থেকেও নম্বরটা উধাও হলো কি না।
+
+<Solution>
+```sql
+INSERT INTO students (name, roll, class) VALUES ('পরীক্ষা', 50, 6);
+INSERT INTO marks VALUES (LAST_INSERT_ID(), 1, 77);
+SELECT * FROM marks WHERE score = 77;      -- ১টা Row
+DELETE FROM students WHERE roll = 50;
+SELECT * FROM marks WHERE score = 77;      -- ০টা Row, CASCADE কাজ করেছে
+```
+
+`LAST_INSERT_ID()` এইমাত্র `AUTO_INCREMENT`-এ পাওয়া `id`-টা ফেরত দেয়। ফাঁকের কারণে নম্বরটা যাই হোক, এটা ঠিকটাই দেবে।
+</Solution>
+</Quest>
+
+<Quest id="3" title="SET NULL দেখো">
+একজন নতুন শিক্ষক যোগ করো, তাঁকে ইংরেজির দায়িত্ব দাও, তারপর শিক্ষককে মুছে দেখো ইংরেজির `teacher_id` কী হলো।
+
+<Solution>
+```sql
+INSERT INTO teachers (name, salary, head_id) VALUES ('অতিথি স্যার', 25000, 2);
+UPDATE subjects SET teacher_id = LAST_INSERT_ID() WHERE name = 'ইংরেজি';
+DELETE FROM teachers WHERE name = 'অতিথি স্যার';
+SELECT name, teacher_id FROM subjects WHERE name = 'ইংরেজি';   -- NULL
+```
+
+বিষয়টা মুছে যায়নি, শুধু শিক্ষকের জায়গা খালি হয়েছে।
+</Solution>
+</Quest>
+
+<Boss title="ক্লাব রেজিস্ট্রেশনের টেবিল">
+স্কুলে ক্লাব চালু হচ্ছে। দুটো টেবিল ডিজাইন করো, প্রতিটা নিয়ম Constraint দিয়ে বসাও:
+
+- `clubs`: নাম (খালি না, অনন্য), সদস্য সীমা (১ থেকে ৫০, না দিলে ৩০), উপদেষ্টা শিক্ষক (থাকতেও পারে, না-ও পারে; শিক্ষক চলে গেলে ঘর খালি হবে)।
+- `club_members`: কোন ছাত্র কোন ক্লাবে, যোগদানের তারিখ (না দিলে আজ)। একজন একটা ক্লাবে একবারই। ছাত্র স্কুল ছাড়লে তার সদস্যপদও মুছে যাবে, কিন্তু সদস্য থাকা অবস্থায় ক্লাব মোছা যাবে না।
+
+<Solution title="ইঙ্গিত ১">
+প্রতিটা বাক্য একটা Constraint: "খালি না" = `NOT NULL`, "অনন্য" = `UNIQUE`, "১ থেকে ৫০" = `CHECK`, "না দিলে ৩০" = `DEFAULT`।
+</Solution>
+
+<Solution title="ইঙ্গিত ২">
+Foreign Key-র `ON DELETE` তিন রকম চাই: শিক্ষক চলে গেলে `SET NULL` (তাই সেই Column `NULL` হতে পারবে), ছাত্র গেলে `CASCADE`, ক্লাব মুছতে চাইলে আটকাও (`RESTRICT`)। "একজন একটা ক্লাবে একবারই" = দুই Column মিলিয়ে Composite Primary Key।
+</Solution>
+
+<Solution>
+```sql
+CREATE TABLE clubs (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(80) NOT NULL UNIQUE,
+  max_members TINYINT UNSIGNED NOT NULL DEFAULT 30,
+  advisor_id  INT NULL,
+  CONSTRAINT chk_club_size CHECK (max_members BETWEEN 1 AND 50),
+  CONSTRAINT fk_club_advisor FOREIGN KEY (advisor_id)
+    REFERENCES teachers(id) ON DELETE SET NULL
+);
+
+CREATE TABLE club_members (
+  club_id    INT NOT NULL,
+  student_id INT NOT NULL,
+  joined_on  DATE NOT NULL DEFAULT (CURRENT_DATE),
+  PRIMARY KEY (club_id, student_id),
+  CONSTRAINT fk_member_club FOREIGN KEY (club_id) REFERENCES clubs(id),
+  CONSTRAINT fk_member_student FOREIGN KEY (student_id)
+    REFERENCES students(id) ON DELETE CASCADE
+);
+```
+
+- `PRIMARY KEY (club_id, student_id)` একজনকে একই ক্লাবে দুবার ঢুকতে দেয় না।
+- `fk_member_club`-এ কোনো `ON DELETE` নেই, তাই ডিফল্ট `RESTRICT`: সদস্য থাকলে ক্লাব মোছা যাবে না।
+- `DEFAULT (CURRENT_DATE)`: বন্ধনীর ভেতরে Expression দিয়ে DEFAULT, MySQL 8.0.13 থেকে চলে। MariaDB-তে `DEFAULT CURRENT_DATE` লেখো।
+- "সদস্য সীমা পূর্ণ হলে আর ভর্তি নয়" নিয়মটা কিন্তু `CHECK` দিয়ে বসানো যায় না, কারণ `CHECK` শুধু নিজের Row দেখে, অন্য Row গুনতে পারে না। এর জন্য লাগবে Trigger (লেভেল ১৭)।
+</Solution>
+</Boss>
+
+<Summary slug="level-9" />
+
+<Checkpoint questions={[
+  { q: "PRIMARY KEY আসলে কোন দুটো নিয়মের যোগফল?", options: ["NOT NULL + UNIQUE", "DEFAULT + CHECK", "UNIQUE + DEFAULT", "FOREIGN KEY + CHECK"], answer: 0, why: "Primary Key খালি থাকতে পারে না, আর দুবার একই মানও হতে পারে না।" },
+  { q: "UNIQUE Column-এ কি একাধিক NULL থাকতে পারে?", options: ["না, কখনো না", "হ্যাঁ, কারণ একটা NULL আরেকটার সমান ধরা হয় না", "শুধু একটা", "শুধু PRIMARY KEY-তে"], answer: 1, why: "NULL মানে অজানা; দুটো অজানাকে 'একই' বলা যায় না।" },
+  { q: "ছাত্র মুছলে তার সব নম্বরও মুছে যাবে — কোন নিয়ম?", options: ["ON DELETE SET NULL", "ON DELETE RESTRICT", "ON DELETE CASCADE", "UNIQUE"], answer: 2, why: "CASCADE মানে Parent-এর সাথে Child-ও মুছে যায়।" },
+  { q: "marks টেবিলে (student_id, subject_id) মিলে Primary Key — একে কী বলে?", options: ["Foreign Key", "Composite Key", "Unique Index", "Super Table"], answer: 1, why: "একাধিক Column মিলে গঠিত Key-কে Composite Key বলে।" },
+  { q: "MySQL-এর কোন সংস্করণ থেকে CHECK সত্যিই প্রয়োগ হয়?", options: ["5.5", "5.7", "8.0.16", "সবসময়ই হতো"], answer: 2, why: "8.0.16-এর আগে CHECK লেখা গেলেও উপেক্ষা করা হতো।" }
+]} />

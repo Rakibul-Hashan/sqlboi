@@ -1,0 +1,222 @@
+<Mission>
+- `INSERT` দিয়ে টেবিলে ডেটা ঢোকানো, একটা বা একসাথে অনেকগুলো
+- `UPDATE` দিয়ে ভুল ঠিক করা, `DELETE` দিয়ে মুছে ফেলা
+- `ALTER` দিয়ে টেবিলের গঠন বদলানো, `DROP` আর `TRUNCATE` দিয়ে পুরো জিনিস ফেলে দেওয়া
+- আর সবচেয়ে জরুরি: `WHERE` ভুলে গেলে কী সর্বনাশ হয়
+</Mission>
+
+লেভেল ১-এ খালি ছক বানিয়েছি। এবার তাতে লেখা শুরু।
+
+## INSERT: নতুন লাইন যোগ করা
+
+```sql
+USE school;
+
+INSERT INTO students (name, roll, class, section, city, gpa, birth_date, phone)
+VALUES ('রাফি', 1, 8, 'A', 'ঢাকা', 4.50, '2011-03-14', '01711000001');
+```
+
+গঠনটা হলো: `INSERT INTO টেবিল (কোন কোন ঘর) VALUES (কী কী মান);`
+
+- লেখা আর তারিখ `'একক উদ্ধৃতি'`-র ভেতরে, সংখ্যা উদ্ধৃতি ছাড়া।
+- `id` দিইনি, কারণ ওটা `AUTO_INCREMENT`; MySQL নিজেই 1 বসাবে।
+- Column-এর তালিকা আর মানের তালিকা একই ক্রমে আর একই সংখ্যায় হতে হবে।
+
+### একসাথে অনেকগুলো
+
+এক কমান্ডে কমা দিয়ে অনেকগুলো Row ঢোকানো যায়, আর এটা আলাদা আলাদা INSERT-এর চেয়ে অনেক দ্রুত:
+
+```sql
+INSERT INTO students (name, roll, class, section, city, gpa, birth_date, phone) VALUES
+  ('নুসরাত', 2, 8, 'A', 'চট্টগ্রাম', 5.00, '2011-07-02', '01811000002'),
+  ('তানভীর', 3, 8, 'B', 'ঢাকা', 3.75, '2010-12-25', NULL),
+  ('মীম', 4, 9, 'A', 'সিলেট', 4.25, '2010-05-19', '01911000004'),
+  ('আরিফ', 5, 9, 'B', 'রাজশাহী', 2.90, '2009-11-30', NULL),
+  ('সাদিয়া', 6, 9, 'A', 'ঢাকা', 4.80, '2010-01-08', '01611000006'),
+  ('জুবায়ের', 7, 10, 'A', 'খুলনা', 3.50, '2009-08-21', '01511000007'),
+  ('ফারিহা', 8, 10, 'B', 'চট্টগ্রাম', NULL, '2009-04-11', '01311000008'),
+  ('ইমরান', 9, 10, 'A', 'ঢাকা', 4.00, '2008-10-03', NULL),
+  ('লামিয়া', 10, 8, 'B', 'বরিশাল', 4.95, '2011-02-27', '01711000010');
+```
+
+`NULL` মানে "জানা নেই" বা "খালি"। তানভীরের ফোন নম্বর জানা নেই, ফারিহার GPA এখনো আসেনি। `NULL` শূন্য (`0`) না, খালি লেখাও (`''`) না; এটা একদম আলাদা একটা জিনিস। লেভেল ৪-এ এর মজার দিকগুলো দেখব।
+
+এখন টেবিলে কী আছে দেখি (এই কমান্ডের বিস্তারিত পরের লেভেলে):
+
+```sql
+SELECT * FROM students;
+```
+
+এই ১০ জন ছাত্রই হবে পরের কয়েকটা লেভেলের সঙ্গী। ডেটা কোনো কারণে নষ্ট হয়ে গেলে লেভেল ১-এর `CREATE TABLE` আর এই দুটো `INSERT` আবার চালিয়ে দিলেই শুরুর অবস্থায় ফিরে আসবে।
+
+## UPDATE: ভুল ঠিক করা
+
+ফারিহার GPA চলে এসেছে, 3.90:
+
+```sql
+UPDATE students
+SET gpa = 3.90
+WHERE id = 8;
+```
+
+গঠন: `UPDATE টেবিল SET ঘর = নতুন মান WHERE কোন লাইনগুলো;`
+
+একসাথে একাধিক ঘর, আর পুরোনো মানের ওপর হিসাবও করা যায়:
+
+```sql
+-- মীম খুলনায় চলে গেছে, নতুন ফোন নম্বরও নিয়েছে
+UPDATE students
+SET city = 'খুলনা', phone = '01911000044'
+WHERE id = 4;
+
+-- ক্লাস ১০-এর সবার রোল ১০০ করে বাড়াও
+UPDATE students
+SET roll = roll + 100
+WHERE class = 10;
+```
+
+<Remember>
+**`WHERE` ছাড়া `UPDATE` বা `DELETE` টেবিলের সব Row-এ চলে।** `UPDATE students SET gpa = 5.00;` লিখলে স্কুলের সবাই রাতারাতি গোল্ডেন A+ পেয়ে যাবে, আর আগের মান ফেরত আনার কোনো "Undo" নেই। তাই সবসময় আগে `WHERE` লেখো, তারপর বাকিটা। আরও ভালো অভ্যাস: একই `WHERE` দিয়ে আগে একটা `SELECT` চালিয়ে দেখে নাও কোন লাইনগুলো বদলাবে।
+</Remember>
+
+## DELETE: লাইন মুছে ফেলা
+
+```sql
+-- একটা পরীক্ষার জন্য ভুয়া একজন ঢোকাই
+INSERT INTO students (name, roll, class) VALUES ('ভুয়া', 99, 8);
+
+-- এবার তাকে মুছে ফেলি
+DELETE FROM students
+WHERE roll = 99;
+```
+
+`DELETE` পুরো Row মুছে দেয়। শুধু একটা ঘর খালি করতে চাইলে `DELETE` না, `UPDATE ... SET ঘর = NULL` ব্যবহার করো।
+
+## ALTER: ছকের গঠন বদলানো
+
+টেবিল বানানোর পরে নতুন ঘর লাগলে আবার শুরু থেকে বানাতে হয় না।
+
+```sql
+-- নতুন Column যোগ
+ALTER TABLE students ADD email VARCHAR(255);
+
+-- Column-এর Type বদলানো
+ALTER TABLE students MODIFY city VARCHAR(80);
+
+-- Column-এর নাম বদলানো (MySQL 8 আর MariaDB 10.5+)
+ALTER TABLE students RENAME COLUMN email TO email_address;
+
+-- Column মুছে ফেলা
+ALTER TABLE students DROP COLUMN email_address;
+```
+
+## DROP আর TRUNCATE: পুরোটা ফেলে দেওয়া
+
+| কমান্ড | কী করে | টেবিলের গঠন থাকে? | AUTO_INCREMENT |
+| --- | --- | --- | --- |
+| `DELETE FROM t;` | সব Row এক এক করে মোছে | থাকে | আগের জায়গা থেকেই চলে |
+| `TRUNCATE TABLE t;` | সব Row একবারে ফেলে দেয়, অনেক দ্রুত | থাকে | আবার 1 থেকে শুরু |
+| `DROP TABLE t;` | পুরো টেবিলটাই মুছে দেয় | না | নেই |
+| `DROP DATABASE d;` | পুরো খাতাই মুছে দেয় | না | নেই |
+
+```sql
+CREATE TABLE scratch (id INT AUTO_INCREMENT PRIMARY KEY, note VARCHAR(50));
+INSERT INTO scratch (note) VALUES ('এক'), ('দুই');
+TRUNCATE TABLE scratch;     -- খালি, কিন্তু টেবিল আছে
+DROP TABLE scratch;         -- টেবিলটাই নেই
+```
+
+## ALTER আর INSERT-এর পার্থক্য মনে রাখার কৌশল
+
+SQL-এর কমান্ডগুলো দুই দলে ভাগ করা যায়:
+
+- **DDL** (Data Definition Language): ছকের *গঠন* নিয়ে কাজ। `CREATE`, `ALTER`, `DROP`, `TRUNCATE`।
+- **DML** (Data Manipulation Language): ছকের *ভেতরের ডেটা* নিয়ে কাজ। `INSERT`, `UPDATE`, `DELETE`, `SELECT`।
+
+পরীক্ষায় এই প্রশ্নটা প্রায়ই আসে। `TRUNCATE` দেখতে `DELETE`-এর মতো হলেও এটা DDL, কারণ এটা Row ধরে ধরে মোছে না, টেবিলটা খালি করে নতুন করে সাজায়।
+
+<BugMonster title="ডেটা বদলাতে গিয়ে">
+
+**১. `Column count doesn't match value count`**। Column-এর তালিকায় ৩টা নাম, কিন্তু `VALUES`-এ ৪টা মান (বা উল্টো)। গুনে মিলিয়ে নাও।
+
+**২. লেখা উদ্ধৃতি ছাড়া দেওয়া।**
+
+```sql
+-- ❌ MySQL ঢাকা নামে একটা Column খুঁজবে
+UPDATE students SET city = ঢাকা WHERE id = 1;
+-- ✅
+UPDATE students SET city = 'ঢাকা' WHERE id = 1;
+```
+
+**৩. `Error 1175: You are using safe update mode`**। MySQL Workbench-এ ডিফল্টভাবে "Safe Updates" চালু থাকে, যা Primary Key ছাড়া `WHERE` দিয়ে UPDATE/DELETE আটকে দেয়। এটা আসলে তোমার বন্ধু! `WHERE id = ...` দিয়ে লেখো, বা বুঝে-শুনে `SET SQL_SAFE_UPDATES = 0;` চালাও।
+
+**৪. তারিখ ভুল ফরম্যাটে।** `'14-03-2011'` না, MySQL চায় `'2011-03-14'` (বছর-মাস-দিন)।
+
+</BugMonster>
+
+<Quest id="1" title="১০ জনকে ঢোকাও">
+ওপরের দুটো `INSERT` চালিয়ে `students` টেবিলে ১০ জনকে ঢোকাও, তারপর `SELECT * FROM students;` দিয়ে দেখো।
+</Quest>
+
+<Quest id="2" title="ভুল সংশোধন">
+তিনটা কাজ করো: (ক) তানভীরের ফোন নম্বর বসাও `01811000003`; (খ) আরিফের GPA 2.90 থেকে 3.10 করো; (গ) লামিয়ার সেকশন A করে দাও।
+
+<Solution>
+```sql
+UPDATE students SET phone = '01811000003' WHERE id = 3;
+UPDATE students SET gpa = 3.10 WHERE id = 5;
+UPDATE students SET section = 'A' WHERE id = 10;
+```
+
+নাম দিয়ে না খুঁজে `id` দিয়ে খুঁজেছি, কারণ দুইজনের একই নাম থাকতে পারে, কিন্তু `id` সবসময় অনন্য।
+</Solution>
+</Quest>
+
+<Quest id="3" title="ঘর যোগ আর বাদ">
+`students`-এ `blood_group` নামে একটা Column যোগ করো (`VARCHAR(3)`), রাফির জন্য `'B+'` বসাও, তারপর Column-টা আবার মুছে ফেলো।
+
+<Solution>
+```sql
+ALTER TABLE students ADD blood_group VARCHAR(3);
+UPDATE students SET blood_group = 'B+' WHERE id = 1;
+ALTER TABLE students DROP COLUMN blood_group;
+```
+</Solution>
+</Quest>
+
+<Boss title="নতুন বছরের প্রমোশন">
+নতুন শিক্ষাবর্ষ শুরু। তোমার কাজ, এই ক্রমে:
+
+1. ক্লাস ১০-এর সবাই পাস করে বেরিয়ে গেছে, তাদের টেবিল থেকে মুছে ফেলো।
+2. বাকি সবাইকে এক ক্লাস ওপরে তোলো।
+3. নতুন ক্লাস ৮-এ একজন এসেছে: নাম "তাসনিম", রোল 11, সেকশন A, শহর ময়মনসিংহ, জন্মতারিখ 2012-06-15, GPA আর ফোন এখনো জানা নেই।
+
+ক্রমটা কেন জরুরি, সেটাও ভাবো।
+
+<Solution title="ইঙ্গিত">
+তিনটা কাজ: `DELETE`, `UPDATE`, `INSERT`। এখন ভাবো, আগে সবাইকে এক ক্লাস ওপরে তুললে ক্লাস ১০-এর বিদায়ীদের সাথে নতুন ১০-এ ওঠা ক্লাস ৯-এর কী হবে? আর নতুন জনের GPA আর ফোন না জানলে সেই Column দুটো `INSERT`-এ লেখারই দরকার নেই।
+</Solution>
+
+<Solution>
+```sql
+DELETE FROM students WHERE class = 10;
+UPDATE students SET class = class + 1;
+INSERT INTO students (name, roll, class, section, city, birth_date)
+VALUES ('তাসনিম', 11, 8, 'A', 'ময়মনসিংহ', '2012-06-15');
+```
+
+ধাপ ২-এ ইচ্ছে করেই `WHERE` নেই, কারণ এবার সত্যিই সবাইকে বদলাতে চাই। ক্রম উল্টো করলে বিপদ: আগে প্রমোশন দিলে ক্লাস ৯-এর ছাত্ররা ১০-এ উঠে যেত, আর তারপর `DELETE ... WHERE class = 10` তাদেরও মুছে দিত!
+
+পরের লেভেলের জন্য ডেটা আবার শুরুর অবস্থায় আনতে লেভেল ১-এর `CREATE TABLE` আর এই লেভেলের দুটো `INSERT` আবার চালাও।
+</Solution>
+</Boss>
+
+<Summary slug="level-2" />
+
+<Checkpoint questions={[
+  { q: "WHERE ছাড়া UPDATE students SET city = 'ঢাকা'; চালালে কী হবে?", options: ["Error দেবে", "শুধু প্রথম Row বদলাবে", "সব ছাত্রের শহর ঢাকা হয়ে যাবে", "কিছুই হবে না"], answer: 2, why: "WHERE না থাকলে UPDATE টেবিলের প্রতিটা Row-এ চলে।" },
+  { q: "শুধু ফোন নম্বরের ঘরটা খালি করতে কী লিখবে?", options: ["DELETE phone FROM students WHERE id = 1", "UPDATE students SET phone = NULL WHERE id = 1", "DROP phone", "TRUNCATE phone"], answer: 1, why: "DELETE পুরো Row মোছে; একটা ঘর খালি করতে UPDATE দিয়ে NULL বসাও।" },
+  { q: "কোনটা টেবিলের গঠন রেখে সব ডেটা ফেলে দেয় আর AUTO_INCREMENT আবার 1 থেকে শুরু করে?", options: ["DELETE FROM t", "DROP TABLE t", "TRUNCATE TABLE t", "ALTER TABLE t"], answer: 2, why: "TRUNCATE টেবিল খালি করে নতুন করে সাজায়, তাই কাউন্টারও রিসেট হয়।" },
+  { q: "নিচের কোনটা DDL কমান্ড?", options: ["INSERT", "UPDATE", "ALTER", "SELECT"], answer: 2, why: "DDL গঠন বদলায় (CREATE, ALTER, DROP, TRUNCATE); বাকিগুলো DML।" },
+  { q: "MySQL-এ তারিখ লেখার সঠিক ফরম্যাট কোনটা?", options: ["'14-03-2011'", "'2011-03-14'", "'03/14/2011'", "14032011"], answer: 1, why: "DATE ফরম্যাট হলো 'YYYY-MM-DD'।" }
+]} />

@@ -1,0 +1,267 @@
+<Story title="বোনাস লেভেল">
+পুরো বই শেষ! এই শেষ পাতাটা একটা অস্ত্রাগার: ইউনির পরীক্ষার বারবার আসা প্রশ্ন, ভাইভায় কী জিজ্ঞেস করে, চাকরির ইন্টারভিউয়ের ক্লাসিক SQL সমস্যা, আর এক পাতার একটা Cheat Sheet। পরীক্ষার আগের রাতে শুধু এই পাতাটা খুললেই চলবে।
+</Story>
+
+<Mission>
+- ইউনির DBMS পরীক্ষার কমন তাত্ত্বিক প্রশ্ন আর সংক্ষিপ্ত উত্তর
+- ভাইভা আর ইন্টারভিউয়ের কৌশল
+- ইন্টারভিউয়ের ক্লাসিক SQL সমস্যা (দ্বিতীয় সর্বোচ্চ, ডুপ্লিকেট, Top-N per group)
+- পুরো বইয়ের Cheat Sheet
+</Mission>
+
+## পরীক্ষার কমন প্রশ্ন
+
+প্রতিটা প্রশ্ন আগে নিজে মনে মনে উত্তর দাও, তারপর খুলে মেলাও। বন্ধনীতে লেভেল নম্বর, বিস্তারিত পড়তে চাইলে।
+
+<Solution title="১. DBMS আর File System-এর পার্থক্য কী? (লেভেল ০)">
+File System-এ (খাতা, Excel, টেক্সট ফাইল) পুনরাবৃত্তি আর গরমিল (Redundancy, Inconsistency) সহজে ঘটে, একসাথে অনেকের কাজ (Concurrency) সামলানো যায় না, নিরাপত্তা দুর্বল, আর জটিল খোঁজা কঠিন। DBMS দেয়: Constraint দিয়ে Integrity, Transaction দিয়ে Atomicity আর Concurrency Control, User/Privilege দিয়ে নিরাপত্তা, SQL দিয়ে সহজ খোঁজা, আর Backup/Recovery।
+</Solution>
+
+<Solution title="২. DDL, DML, DCL, TCL কী? উদাহরণ দাও। (লেভেল ২, ১৮, ১৯)">
+- **DDL** (Definition): `CREATE`, `ALTER`, `DROP`, `TRUNCATE`, `RENAME`
+- **DML** (Manipulation): `SELECT`, `INSERT`, `UPDATE`, `DELETE` (কিছু বইয়ে `SELECT`-কে আলাদা **DQL** বলে)
+- **DCL** (Control): `GRANT`, `REVOKE`
+- **TCL** (Transaction Control): `COMMIT`, `ROLLBACK`, `SAVEPOINT`
+</Solution>
+
+<Solution title="৩. DELETE, TRUNCATE আর DROP-এর পার্থক্য। (লেভেল ২)">
+| | `DELETE` | `TRUNCATE` | `DROP` |
+| --- | --- | --- | --- |
+| ধরন | DML | DDL | DDL |
+| `WHERE` চলে? | হ্যাঁ | না | না |
+| গঠন থাকে? | হ্যাঁ | হ্যাঁ | না |
+| `AUTO_INCREMENT` | চলতে থাকে | রিসেট | নেই |
+| Rollback (InnoDB) | হ্যাঁ | না (Implicit Commit) | না |
+| Trigger চলে? | হ্যাঁ (`DELETE` Trigger) | না | না |
+</Solution>
+
+<Solution title="৪. Super, Candidate, Primary, Alternate, Foreign, Composite Key। (লেভেল ১৩)">
+- **Super Key:** যে Attribute-সেট প্রতিটা Tuple অনন্যভাবে চেনায়।
+- **Candidate Key:** ন্যূনতম Super Key।
+- **Primary Key:** বেছে নেওয়া একটা Candidate Key; `NOT NULL` + `UNIQUE`।
+- **Alternate Key:** বাকি Candidate Key-রা।
+- **Foreign Key:** অন্য Relation-এর Key-এর দিকে নির্দেশ, Referential Integrity রক্ষা করে।
+- **Composite Key:** একাধিক Attribute মিলে Key।
+</Solution>
+
+<Solution title="৫. WHERE আর HAVING-এর পার্থক্য। Query-র Execution Order লেখো। (লেভেল ৮)">
+`WHERE` Row ছাঁকে দল বানানোর আগে, Aggregate ব্যবহার করতে পারে না। `HAVING` দল ছাঁকে দল বানানোর পরে, Aggregate ব্যবহার করতে পারে।
+
+Execution Order: `FROM` → `WHERE` → `GROUP BY` → `HAVING` → `SELECT` → `ORDER BY` → `LIMIT`।
+</Solution>
+
+<Solution title="৬. বিভিন্ন JOIN ব্যাখ্যা করো। MySQL-এ FULL OUTER JOIN কীভাবে করবে? (লেভেল ১০–১১)">
+`INNER` = শুধু মিল থাকা; `LEFT` = বাঁয়ের সব + মিল; `RIGHT` = ডানের সব + মিল; `FULL OUTER` = দুই পাশের সব; `CROSS` = Cartesian Product; `SELF` = টেবিলকে নিজের সাথে। MySQL-এ `FULL OUTER JOIN` নেই: `LEFT JOIN ... UNION ... RIGHT JOIN`।
+</Solution>
+
+<Solution title="৭. Normalization কী, কেন? 1NF থেকে BCNF সংক্ষেপে। (লেভেল ১৫)">
+Normalization হলো টেবিল ভেঙে পুনরাবৃত্তি আর Insertion/Update/Deletion Anomaly দূর করা।
+- **1NF:** Atomic মান, Repeating Group নেই।
+- **2NF:** 1NF + কোনো Partial Dependency নেই (Composite Key-এর অংশের ওপর নির্ভরতা)।
+- **3NF:** 2NF + কোনো Transitive Dependency নেই (non-key → non-key)।
+- **BCNF:** প্রতিটা Non-trivial FD-এর Determinant একটা Super Key।
+
+উদাহরণ দিতে পারলে নম্বর বেশি; লেভেল ১৫-এর `bad_records` টেবিলটা ভালো উদাহরণ।
+</Solution>
+
+<Solution title="৮. ACID আর Isolation Level। (লেভেল ১৮)">
+Atomicity (সব বা কিছুই না), Consistency (নিয়ম মানা থাকে), Isolation (একসাথে চলা Transaction একে অন্যের অসম্পূর্ণ কাজ দেখে না), Durability (Commit হলে স্থায়ী)।
+
+Isolation Level আর তারা কী আটকায়: `READ UNCOMMITTED` (কিছুই না), `READ COMMITTED` (Dirty Read), `REPEATABLE READ` (+ Non-repeatable Read; InnoDB-র ডিফল্ট), `SERIALIZABLE` (+ Phantom)।
+</Solution>
+
+<Solution title="৯. Deadlock কী? কীভাবে এড়াবে? (লেভেল ১৮)">
+দুই বা ততোধিক Transaction একে অন্যের ধরে রাখা Lock-এর জন্য অপেক্ষা করে চক্রে আটকে যায়। InnoDB এটা শনাক্ত করে একটাকে Rollback করে (`ERROR 1213`)। এড়ানোর উপায়: সবসময় একই ক্রমে Lock নেওয়া, Transaction ছোট রাখা, দরকারি Index রাখা (যাতে কম Row Lock হয়), আর অ্যাপে Retry।
+</Solution>
+
+<Solution title="১০. Index কী? কখন ব্যবহার করা উচিত না? (লেভেল ১৬)">
+Index হলো একটা আলাদা সাজানো গঠন (InnoDB-তে সাধারণত B+Tree), যা Full Table Scan ছাড়াই দ্রুত খুঁজতে দেয়। ব্যবহার উচিত না: খুব ছোট টেবিলে, কম Selectivity-র Column-এ (যেমন শুধু ২-৪টা আলাদা মান), যে টেবিলে লেখা অনেক বেশি আর পড়া কম। Index প্রতিটা `INSERT`/`UPDATE`/`DELETE`-কে ধীর করে আর জায়গা নেয়। Clustered Index (InnoDB-তে Primary Key, ডেটা এই ক্রমেই সাজানো) আর Secondary Index-এর পার্থক্যও প্রায়ই জিজ্ঞেস করা হয়।
+</Solution>
+
+<Solution title="১১. View, Stored Procedure, Function আর Trigger-এর পার্থক্য। (লেভেল ১৭)">
+- **View:** সংরক্ষিত `SELECT`, ভার্চুয়াল টেবিল, নিজে ডেটা রাখে না।
+- **Function:** একটা মান ফেরত দেয়, `SELECT`-এর ভেতরে ব্যবহার হয়।
+- **Procedure:** `CALL` দিয়ে চলে, ডেটা বদলাতে পারে, `IN`/`OUT` প্যারামিটার, Transaction চালাতে পারে।
+- **Trigger:** কেউ ডাকে না; টেবিলে `INSERT`/`UPDATE`/`DELETE` হলে নিজে থেকে চলে (`BEFORE`/`AFTER`, `OLD`/`NEW`)।
+</Solution>
+
+<Solution title="১২. SQL Injection কী, কীভাবে প্রতিরোধ করবে? (লেভেল ১৯)">
+ইউজারের ইনপুট সরাসরি SQL লেখায় জোড়া দিলে আক্রমণকারী Query-র অর্থ বদলে ফেলতে পারে (যেমন লগইনে `' OR '1'='1`)। প্রতিরোধ: Prepared Statement / Parameterized Query (মূল উপায়), Least Privilege User, ইনপুট যাচাই, আর আউটপুট Escape। `addslashes` বা নিজে ফিল্টার করা যথেষ্ট না।
+</Solution>
+
+<Solution title="১৩. ER Diagram-এর উপাদান আর ER থেকে টেবিল Mapping। (লেভেল ১৪)">
+Entity (আয়তক্ষেত্র), Weak Entity (দুই দাগের আয়তক্ষেত্র), Attribute (ডিম্বাকৃতি: Key-তে দাগ, Multi-valued দুই দাগ, Derived ড্যাশ), Relationship (রম্বস), Cardinality (১:১, ১:N, M:N), Participation (Total দুই রেখা, Partial এক রেখা)।
+
+Mapping: Entity → টেবিল; ১:N → N দিকে FK; M:N → Junction টেবিল; ১:১ → এক দিকে FK + UNIQUE; Multi-valued → আলাদা টেবিল; Weak → Owner PK + Partial Key; Derived → Column না।
+</Solution>
+
+<Solution title="১৪. NULL নিয়ে তিনটা ফাঁদ বলো। (লেভেল ৪, ৭, ১২)">
+১. `= NULL` কখনো সত্যি না; `IS NULL` লাগে। ২. Aggregate (`COUNT(*)` ছাড়া) `NULL` উপেক্ষা করে, তাই `AVG` অবাক করতে পারে। ৩. `NOT IN`-এর তালিকায় একটা `NULL` থাকলে কোনো Row আসে না; `NOT EXISTS` ব্যবহার করো। (বোনাস: `UNIQUE` Column-এ একাধিক `NULL` থাকতে পারে।)
+</Solution>
+
+## ভাইভার কৌশল
+
+- **সংজ্ঞা + উদাহরণ + কেন।** "Foreign Key হলো..." বলে থেমো না। বলো: "যেমন `marks.student_id`, যেটা নিশ্চিত করে কোনো নম্বর এমন ছাত্রের নামে থাকবে না যে নেই।" উদাহরণ দেখায় তুমি সত্যিই বোঝো।
+- **নিজের প্রজেক্ট ভালো করে জানো।** প্রায় সব ভাইভা শুরু হয় "তোমার প্রজেক্টের ER Diagram দেখাও" দিয়ে, তারপর প্রশ্ন আসে: "এই টেবিল কোন Normal Form-এ? প্রমাণ করো।" "এখানে `CASCADE` কেন?" লেভেল ২০-এর চেকলিস্টের প্রতিটা সিদ্ধান্তের একটা কারণ মুখস্থ রাখো।
+- **না জানলে বানিয়ে বোলো না।** "নিশ্চিত না, তবে আমার ধারণা..." বলে যুক্তি দেখাও। পরীক্ষকরা অনুমানের চেয়ে সৎ চিন্তা বেশি পছন্দ করেন।
+- **বোর্ডে ছোট টেবিল আঁকো।** ৩-৪ লাইনের একটা টেবিল এঁকে JOIN বা GROUP BY ব্যাখ্যা করলে কথার চেয়ে অনেক পরিষ্কার হয়।
+
+## ইন্টারভিউয়ের ক্লাসিক SQL সমস্যা
+
+জোন ২-এর `school` খাতায় চালাও।
+
+### দ্বিতীয় সর্বোচ্চ GPA
+
+```sql
+-- উপায় ১: Subquery
+SELECT MAX(gpa) AS second_highest
+FROM students
+WHERE gpa < (SELECT MAX(gpa) FROM students);
+
+-- উপায় ২: DISTINCT + LIMIT OFFSET
+SELECT DISTINCT gpa FROM students ORDER BY gpa DESC LIMIT 1 OFFSET 1;
+```
+
+দুটোই 4.95। ইন্টারভিউয়ার পরের প্রশ্ন করবে: "সমান নম্বর থাকলে?" (তাই `DISTINCT`), "দ্বিতীয় না থাকলে?" (উপায় ১ `NULL` দেয়, উপায় ২ কোনো Row-ই দেয় না)। "N-তম সর্বোচ্চ" হলে উপায় ২-এ `OFFSET N-1`।
+
+### ডুপ্লিকেট খোঁজা আর মোছা
+
+```sql
+-- কোন শহর একাধিকবার আছে
+SELECT city, COUNT(*) AS n FROM students GROUP BY city HAVING COUNT(*) > 1;
+```
+
+ডুপ্লিকেট মোছা, ছোট `id`-রটা রেখে (একটা পরীক্ষামূলক টেবিলে):
+
+```sql
+CREATE TABLE dup (id INT AUTO_INCREMENT PRIMARY KEY, phone VARCHAR(15));
+INSERT INTO dup (phone) VALUES ('017'), ('018'), ('017'), ('019'), ('018');
+
+DELETE d1 FROM dup d1
+JOIN dup d2 ON d1.phone = d2.phone AND d1.id > d2.id;
+
+SELECT * FROM dup;   -- 1:017, 2:018, 4:019
+DROP TABLE dup;
+```
+
+এটা লেভেল ১১-এর Self Join, `DELETE`-এর সাথে। (MySQL-এর বিশেষ `DELETE ... JOIN` লেখা।) ভবিষ্যতে ডুপ্লিকেট ঠেকাতে মোছার পরে `UNIQUE` Constraint দাও।
+
+### প্রতিটা দলের সেরা N জন (Top-N per Group)
+
+প্রতিটা ক্লাসের সেরা ২ জন:
+
+```sql
+-- উপায় ১: Correlated Subquery (যেকোনো MySQL সংস্করণে)
+SELECT s.class, s.name, s.gpa
+FROM students s
+WHERE s.gpa IS NOT NULL
+  AND 2 > (SELECT COUNT(*) FROM students x WHERE x.class = s.class AND x.gpa > s.gpa)
+ORDER BY s.class, s.gpa DESC;
+
+-- উপায় ২: Window Function (MySQL 8.0+, MariaDB 10.2+)
+SELECT class, name, gpa
+FROM (
+  SELECT class, name, gpa,
+         ROW_NUMBER() OVER (PARTITION BY class ORDER BY gpa DESC) AS rn
+  FROM students
+  WHERE gpa IS NOT NULL
+) t
+WHERE rn <= 2
+ORDER BY class, rn;
+```
+
+| class | name | gpa |
+| --- | --- | --- |
+| 8 | নুসরাত | 5.00 |
+| 8 | লামিয়া | 4.95 |
+| 9 | সাদিয়া | 4.80 |
+| 9 | মীম | 4.25 |
+| 10 | ইমরান | 4.00 |
+| 10 | জুবায়ের | 3.50 |
+
+উপায় ১-এর যুক্তি: "আমার চেয়ে বেশি নম্বর পাওয়া মানুষ নিজের ক্লাসে ২ জনের কম হলে, আমি সেরা ২-এ।" উপায় ২-এর `ROW_NUMBER() OVER (...)` হলো **Window Function**, যেটা দলের ভেতরে প্রতিটা Row-কে ক্রমিক নম্বর দেয়, Row-গুলোকে এক লাইনে না মিশিয়ে। এই বইয়ের মূল অংশের বাইরে, কিন্তু আধুনিক ইন্টারভিউতে প্রায়ই আসে; MySQL-এর ডকুমেন্টেশনে "Window Functions" অংশ পড়ে নিও।
+
+### আরও কয়েকটা, নিজে চেষ্টা করো
+
+<Quest id="1" title="ইন্টারভিউ অনুশীলন">
+(ক) যে ছাত্ররা কোনো বিষয়ে পরীক্ষা দেয়নি (লেভেল ১১); (খ) প্রতিটা বিষয়ের গড়ের চেয়ে বেশি পেয়েছে এমন নম্বরগুলো (লেভেল ১২); (গ) যে শিক্ষকের অধীনে সবচেয়ে বেশি শিক্ষক (লেভেল ১১ + ১২)।
+
+<Solution>
+```sql
+-- (ক)
+SELECT s.name FROM students s
+LEFT JOIN marks m ON m.student_id = s.id
+WHERE m.student_id IS NULL;
+
+-- (খ)
+SELECT m.student_id, m.subject_id, m.score
+FROM marks m
+WHERE m.score > (SELECT AVG(x.score) FROM marks x WHERE x.subject_id = m.subject_id);
+
+-- (গ)
+SELECT h.name, COUNT(*) AS team
+FROM teachers t JOIN teachers h ON h.id = t.head_id
+GROUP BY h.id, h.name
+HAVING COUNT(*) = (SELECT MAX(c) FROM (SELECT COUNT(*) AS c FROM teachers WHERE head_id IS NOT NULL GROUP BY head_id) AS z);
+```
+</Solution>
+</Quest>
+
+## ইন্টারভিউয়ের টিপস
+
+- **প্রশ্ন স্পষ্ট করো।** "সমান হলে কী দেখাব? NULL থাকলে? খালি টেবিলে?" এই প্রশ্নগুলো জিজ্ঞেস করাই দেখায় তুমি বাস্তব ডেটা নিয়ে কাজ করেছ।
+- **জোরে জোরে ভাবো।** "আগে প্রতিটা ছাত্রের মোট বের করব, তারপর সেটার ওপর..."। ভুল হলেও ইন্টারভিউয়ার তোমার চিন্তার ধারা দেখে সাহায্য করতে পারে।
+- **ধাপে ধাপে বানাও।** প্রথমে শুধু `FROM ... JOIN`, তারপর `WHERE`, তারপর `GROUP BY`। একবারে পুরোটা লিখতে যেয়ো না।
+- **গতির কথা তোলো।** "বড় টেবিলে এখানে `student_id`-তে একটা Index লাগবে, আর `EXPLAIN` দিয়ে দেখব Full Scan হচ্ছে কি না।" এই একটা বাক্য তোমাকে বাকিদের থেকে আলাদা করে দেবে।
+- **Transaction আর নিরাপত্তা ভুলো না।** টাকা, স্টক বা বুকিংয়ের প্রশ্নে স্বেচ্ছায় বলো কোথায় Transaction আর Lock লাগবে, আর Prepared Statement।
+
+## Cheat Sheet
+
+নিচে এক নজরের ছোট তালিকা। উদাহরণসহ, খোঁজা যায় আর কপি করা যায় এমন পুরো সংস্করণ: **[চিট শিট পাতা](/cheatsheet)**। আর পুরো DBMS ধাপে ধাপে ঝালাই করতে **[রিভিশন পাতা](/revision)**।
+
+| কাজ | লেখা |
+| --- | --- |
+| Database বানানো | `CREATE DATABASE d CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;` |
+| টেবিল বানানো | `CREATE TABLE t (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100) NOT NULL);` |
+| গঠন বদলানো | `ALTER TABLE t ADD col INT;` · `MODIFY` · `RENAME COLUMN a TO b` · `DROP COLUMN` |
+| ঢোকানো | `INSERT INTO t (a, b) VALUES (1, 'x'), (2, 'y');` |
+| বদলানো | `UPDATE t SET a = 5 WHERE id = 1;` (WHERE ভুলো না!) |
+| মোছা | `DELETE FROM t WHERE id = 1;` · `TRUNCATE TABLE t;` · `DROP TABLE t;` |
+| পড়া | `SELECT a, b FROM t WHERE ... ORDER BY a DESC LIMIT 10 OFFSET 20;` |
+| শর্টকাট | `LIKE 'ক%'` · `IN (1, 2)` · `BETWEEN 1 AND 5` · `IS NULL` |
+| Function | `CONCAT` · `CHAR_LENGTH` · `ROUND` · `DATEDIFF` · `TIMESTAMPDIFF` · `IFNULL` · `CASE WHEN` |
+| Aggregate | `COUNT(*)` · `SUM` · `AVG` · `MIN` · `MAX` · `GROUP BY` · `HAVING` |
+| JOIN | `FROM a JOIN b ON b.a_id = a.id` · `LEFT JOIN ... WHERE b.id IS NULL` |
+| Subquery | `WHERE x > (SELECT AVG(x) ...)` · `WHERE EXISTS (SELECT 1 ...)` · `UNION ALL` |
+| Constraint | `PRIMARY KEY` · `FOREIGN KEY ... REFERENCES ... ON DELETE CASCADE` · `UNIQUE` · `CHECK` · `DEFAULT` |
+| Index | `CREATE INDEX i ON t (a, b);` · `EXPLAIN SELECT ...` · `EXPLAIN ANALYZE` |
+| View | `CREATE VIEW v AS SELECT ...;` |
+| Procedure | `DELIMITER //` `CREATE PROCEDURE p(IN x INT) BEGIN ... END //` `DELIMITER ;` · `CALL p(1);` |
+| Trigger | `CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW BEGIN ... END` |
+| Transaction | `START TRANSACTION; ... COMMIT;` · `ROLLBACK;` · `SELECT ... FOR UPDATE` |
+| User | `CREATE USER 'u'@'localhost' IDENTIFIED BY '...';` · `GRANT SELECT ON d.* TO ...;` · `REVOKE` |
+| Backup | `mysqldump -u root -p --single-transaction --routines --triggers d > d.sql` |
+| Restore | `mysql -u root -p d < d.sql` |
+
+<Remember>
+**পুরো বইয়ের পাঁচটা সোনার নিয়ম:**
+১. `UPDATE`/`DELETE`-এ আগে `WHERE`, আর আগে একই `WHERE` দিয়ে `SELECT`।
+২. `NULL` খুঁজতে `IS NULL`, আর `NOT IN`-এর বদলে `NOT EXISTS`।
+৩. নিয়ম অ্যাপে না, Database-এ বসাও (Constraint, Trigger)।
+৪. টাকা, স্টক, বুকিং মানেই Transaction, আর error হলে `ROLLBACK`।
+৫. ইউজারের ইনপুট কখনো SQL-এ জোড়া দিও না: Prepared Statement।
+</Remember>
+
+<Tip title="আরও প্র্যাকটিস">
+বইয়ের [প্র্যাকটিস অ্যারেনা](/level/level-4-5)-য় চারটা Database-এ ১৬টা প্রশ্ন আছে, ইঙ্গিতসহ। এর বাইরে প্র্যাকটিসের জন্য [OurSQL](https://oursql.vercel.app/) সাইটটাও দেখতে পারো।
+</Tip>
+
+<Summary slug="bonus" />
+
+<Checkpoint questions={[
+  { q: "TRUNCATE কোন দলের কমান্ড?", options: ["DML", "DDL", "DCL", "TCL"], answer: 1, why: "টেবিল খালি করে নতুন করে সাজায়, Row ধরে মোছে না, আর Implicit Commit করে।" },
+  { q: "দ্বিতীয় সর্বোচ্চ GPA বের করার সময় DISTINCT কেন জরুরি?", options: ["গতির জন্য", "সর্বোচ্চ মান একাধিকজনের হলে দ্বিতীয় Row-টাও সর্বোচ্চই হতো", "NULL বাদ দিতে", "দরকার নেই"], answer: 1, why: "দুজনের 5.00 থাকলে DISTINCT ছাড়া OFFSET 1-এ আবার 5.00 আসত।" },
+  { q: "ROW_NUMBER() OVER (PARTITION BY class ORDER BY gpa DESC) কী করে?", options: ["প্রতিটা ক্লাসকে একটা Row-এ মেশায়", "প্রতিটা ক্লাসের ভেতরে GPA অনুযায়ী ১, ২, ৩... নম্বর দেয়", "ক্লাস মুছে দেয়", "GPA যোগ করে"], answer: 1, why: "Window Function Row-গুলো না মিশিয়ে দলের ভেতরে হিসাব করে।" },
+  { q: "ভাইভায় 'Foreign Key কী' প্রশ্নের সেরা উত্তরের ধরন কোনটা?", options: ["শুধু বইয়ের সংজ্ঞা", "সংজ্ঞা + নিজের প্রজেক্টের উদাহরণ + কেন দরকার", "এক শব্দে", "উত্তর না দেওয়া"], answer: 1, why: "উদাহরণ আর কারণ দেখায় তুমি সত্যিই বোঝো।" },
+  { q: "পুরো বইয়ের মতে নিয়ম কোথায় বসানো সবচেয়ে নিরাপদ?", options: ["শুধু অ্যাপের কোডে", "Database-এ (Constraint, Trigger)", "Excel-এ", "কাগজে"], answer: 1, why: "যেকোনো অ্যাপ বা মানুষ যেভাবেই ডেটা বদলাক, Database-এর নিয়ম সবসময় প্রয়োগ হয়।" }
+]} />

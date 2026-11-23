@@ -1,0 +1,192 @@
+<Mission>
+- Table, Row আর Column কী, আর এগুলোর ঠিকঠাক নাম কীভাবে দেব
+- কোন ঘরে কী ধরনের ডেটা বসবে, অর্থাৎ **Data Type**
+- `CREATE DATABASE` আর `CREATE TABLE` দিয়ে নিজের হাতে খাতা আর ছক বানানো
+</Mission>
+
+## ছকটা আসলে দেখতে কেমন
+
+লেভেল ০-তে আমরা একটা `students` ছক বানিয়েছিলাম। একটু বড় করে ভাবলে সেটা দেখতে এমন:
+
+| id | name | roll | class | city |
+| --- | --- | --- | --- | --- |
+| 1 | রাফি | 1 | 8 | ঢাকা |
+| 2 | নুসরাত | 2 | 8 | চট্টগ্রাম |
+| 3 | তানভীর | 3 | 8 | ঢাকা |
+
+- পুরো ছকটা একটা **Table**।
+- প্রতিটা আড়াআড়ি লাইন একটা **Row** (একজন ছাত্রের সব তথ্য)। Row-কে অনেক বইয়ে **Record** বা **Tuple**-ও বলে।
+- প্রতিটা খাড়া ঘর একটা **Column** (সবার নাম, সবার রোল...)। এর আরেক নাম **Field** বা **Attribute**।
+
+একটা Table-এর সব Row-এ Column একই থাকে। রাফির যদি `city` থাকে, নুসরাতেরও `city` থাকবে, খালি হলেও।
+
+## Data Type: কোন ঘরে কী বসবে
+
+খাতায় তুমি রোলের ঘরে ভুল করে "ঢাকা" লিখে ফেলতে পারো। Database সেটা হতে দেয় না, কারণ প্রতিটা Column-এর একটা **Data Type** থাকে। বহুল ব্যবহৃত Type-গুলো:
+
+| ধরন | Type | কী রাখে | উদাহরণ |
+| --- | --- | --- | --- |
+| পূর্ণসংখ্যা | `INT` | প্রায় ±২১০ কোটি পর্যন্ত | রোল, বয়স, দাম (পয়সায়) |
+| ছোট সংখ্যা | `TINYINT` | -128 থেকে 127 | ক্লাস, রেটিং |
+| দশমিক (নিখুঁত) | `DECIMAL(p,s)` | মোট `p` অঙ্ক, দশমিকের পরে `s` অঙ্ক | GPA `DECIMAL(3,2)` → 4.75, টাকা `DECIMAL(10,2)` |
+| দশমিক (আনুমানিক) | `FLOAT`, `DOUBLE` | বৈজ্ঞানিক হিসাব | তাপমাত্রা, দূরত্ব |
+| ছোট লেখা | `VARCHAR(n)` | সর্বোচ্চ `n` অক্ষর | নাম, ইমেইল |
+| নির্দিষ্ট দৈর্ঘ্যের লেখা | `CHAR(n)` | সবসময় `n` অক্ষর | সেকশন `CHAR(1)` |
+| বড় লেখা | `TEXT` | প্রবন্ধ, মন্তব্য | ব্লগ পোস্ট |
+| তারিখ | `DATE` | `YYYY-MM-DD` | জন্মতারিখ `2011-03-14` |
+| তারিখ + সময় | `DATETIME` | `YYYY-MM-DD HH:MM:SS` | অর্ডারের সময় |
+| হ্যাঁ/না | `BOOLEAN` | আসলে `TINYINT(1)`: 0 বা 1 | `is_active` |
+
+<Tip title="টাকার জন্য কোন Type?">
+টাকা-পয়সার হিসাবে কখনো `FLOAT` ব্যবহার করবে না। `FLOAT` আনুমানিক মান রাখে, তাই অনেক যোগ-বিয়োগের পর ছোট ছোট পয়সার গরমিল দেখা দিতে পারে। টাকার জন্য সবসময় **`DECIMAL(10,2)`**।
+</Tip>
+
+ফোন নম্বর কিন্তু `INT` না, `VARCHAR`! কারণ `01711...`-এর শুরুর `0` সংখ্যা হিসেবে রাখলে হারিয়ে যায়, আর ফোন নম্বর দিয়ে কেউ যোগ-বিয়োগ করে না। নিয়মটা সহজ: **যেটা দিয়ে অঙ্ক করবে না, সেটা লেখা হিসেবে রাখো।**
+
+## খাতা বানানো: CREATE DATABASE
+
+```sql
+CREATE DATABASE IF NOT EXISTS school
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+SHOW DATABASES;
+USE school;
+```
+
+- `IF NOT EXISTS` থাকলে খাতা আগে থেকেই থাকলে error দেবে না, চুপচাপ এগিয়ে যাবে।
+- `SHOW DATABASES;` ডেস্কে কয়টা খাতা আছে দেখায়।
+- `USE school;` বলে দেয়, এরপরের সব কাজ এই খাতায়।
+
+প্রতিটা SQL কমান্ডের শেষে `;` দিতে হয়, ঠিক বাংলা বাক্যের শেষে দাঁড়ির মতো।
+
+## ছক বানানো: CREATE TABLE
+
+লেভেল ০-এর ছোট্ট ডেমো টেবিলটা ফেলে দিয়ে এবার একটা পূর্ণাঙ্গ `students` টেবিল বানাই:
+
+```sql
+DROP TABLE IF EXISTS students;
+
+CREATE TABLE students (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(100),
+  roll       INT,
+  class      TINYINT,
+  section    CHAR(1),
+  city       VARCHAR(50),
+  gpa        DECIMAL(3,2),
+  birth_date DATE,
+  phone      VARCHAR(15)
+);
+```
+
+লাইন ধরে ধরে পড়ি:
+
+- `DROP TABLE IF EXISTS students;` পুরোনো টেবিল থাকলে মুছে দেয় (লেভেল ২-এ বিস্তারিত)।
+- প্রতিটা লাইনে আগে **Column-এর নাম**, তারপর **Type**।
+- `id INT AUTO_INCREMENT PRIMARY KEY`: প্রতিটা ছাত্রের একটা অনন্য নম্বর। `AUTO_INCREMENT` মানে MySQL নিজেই 1, 2, 3... বসিয়ে দেবে। `PRIMARY KEY` মানে এই ঘর দিয়ে প্রতিটা Row আলাদা করে চেনা যাবে, দুইজনের একই `id` হতে পারবে না। লেভেল ৯-এ এর গভীরে যাব।
+- শেষ Column-এর পরে কমা নেই।
+
+টেবিলটা ঠিকঠাক হলো কি না দেখতে:
+
+```sql
+SHOW TABLES;
+DESCRIBE students;
+```
+
+`DESCRIBE` প্রতিটা Column-এর নাম, Type, খালি রাখা যাবে কি না (`Null`), আর Key দেখায়।
+
+## নাম রাখার নিয়ম
+
+ভালো নাম পরে অনেক মাথাব্যথা বাঁচায়:
+
+- ছোট হাতের ইংরেজি অক্ষর আর আন্ডারস্কোর: `birth_date`, `student_id`। একে বলে **snake_case**।
+- স্পেস দিও না (`birth date` ❌)। দিলে প্রতিবার ব্যাকটিক দিয়ে ঘিরতে হবে: `` `birth date` ``।
+- SQL-এর নিজস্ব শব্দ (`order`, `select`, `group`) নাম হিসেবে এড়িয়ে চলো।
+- Table-এর নাম বহুবচনে (`students`), Column একবচনে (`name`) রাখা একটা প্রচলিত রীতি। সবচেয়ে জরুরি হলো পুরো প্রজেক্টে একই রীতি মেনে চলা।
+
+<Remember>
+SQL-এর কীওয়ার্ড (`CREATE`, `TABLE`) ছোট বা বড় যেকোনো হাতে লেখা যায়, MySQL দুটোই বোঝে। কিন্তু **Table-এর নাম Linux সার্ভারে case-sensitive হতে পারে**: সেখানে `Students` আর `students` দুটো আলাদা টেবিল। তাই নাম সবসময় ছোট হাতে।
+</Remember>
+
+<BugMonster title="টেবিল বানাতে গিয়ে">
+
+**১. `You have an error in your SQL syntax ... near ')'`**। প্রায় সবসময় শেষ Column-এর পরে একটা বাড়তি কমা।
+
+```sql
+-- ❌ ভুল
+CREATE TABLE t (a INT, b INT,);
+-- ✅ ঠিক
+CREATE TABLE t (a INT, b INT);
+```
+
+**২. `Table 'students' already exists`**। একই নামে আবার বানাতে চাইছ। `CREATE TABLE IF NOT EXISTS` লেখো, বা আগে `DROP TABLE IF EXISTS`।
+
+**৩. `No database selected`**। `USE school;` চালাতে ভুলে গেছ।
+
+**৪. GPA 10.50 বসাতে গেলে `Out of range value`**। `DECIMAL(3,2)` মানে মোট ৩ অঙ্ক, দশমিকের পরে ২টা, তাই সর্বোচ্চ 9.99।
+
+</BugMonster>
+
+<Quest id="1" title="টাইপ বাছাই">
+নিচের প্রতিটার জন্য সবচেয়ে ভালো Data Type কী হবে, খাতায় লিখে ফেলো: পণ্যের দাম, NID নম্বর, পোস্টের লেখা, অর্ডারের সময়, ইমেইল, স্টকে কয়টা আছে।
+
+<Solution>
+দাম `DECIMAL(10,2)` · NID `VARCHAR(17)` (অঙ্ক করা হয় না, আর শুরুতে 0 থাকতে পারে) · পোস্ট `TEXT` · অর্ডারের সময় `DATETIME` · ইমেইল `VARCHAR(255)` · স্টক `INT`
+</Solution>
+</Quest>
+
+<Quest id="2" title="students টেবিল বানাও">
+ওপরের `CREATE TABLE students` চালাও, তারপর `DESCRIBE students;` দিয়ে মিলিয়ে নাও ৯টা Column আছে কি না।
+</Quest>
+
+<Quest id="3" title="শিক্ষকদের ছক">
+`school` খাতায় একটা `teachers` টেবিল বানাও: `id` (অটো নম্বর, Primary Key), `name`, `subject`, `salary` (টাকা), `joined_on` (যোগদানের তারিখ)।
+
+<Solution>
+```sql
+CREATE TABLE teachers (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  name      VARCHAR(100),
+  subject   VARCHAR(50),
+  salary    DECIMAL(10,2),
+  joined_on DATE
+);
+```
+</Solution>
+</Quest>
+
+<Boss title="লাইব্রেরির প্রথম ছক">
+স্কুলের লাইব্রেরির জন্য একটা `books` টেবিল ডিজাইন করো। প্রতিটা বইয়ের জন্য রাখতে হবে: একটা অনন্য নম্বর, শিরোনাম, লেখকের নাম, ISBN (১৩ অঙ্ক, শুরুতে 0 থাকতে পারে), প্রকাশের বছর, দাম, কয়টা কপি আছে, আর বইটা এখন ধার দেওয়া যাবে কি না (হ্যাঁ/না)। প্রতিটা Column-এর জন্য কেন ওই Type বেছে নিলে, এক লাইনে লেখো।
+
+<Solution title="ইঙ্গিত">
+প্রতিটা ঘরের জন্য নিজেকে জিজ্ঞেস করো: এটা দিয়ে কি অঙ্ক করব? ISBN-এ অঙ্ক হয় না, আর শুরুর 0 হারানো চলবে না, তাই সংখ্যা না, লেখা। আর টাকার জন্য `FLOAT` না, `DECIMAL`।
+</Solution>
+
+<Solution>
+```sql
+CREATE TABLE books (
+  id           INT AUTO_INCREMENT PRIMARY KEY, -- অনন্য পরিচয়
+  title        VARCHAR(200),                   -- শিরোনাম বড় হতে পারে
+  author       VARCHAR(100),
+  isbn         CHAR(13),                       -- সবসময় ১৩ অক্ষর, অঙ্ক করা হয় না
+  publish_year SMALLINT,                       -- 1450 থেকে আজ পর্যন্ত আঁটে
+  price        DECIMAL(8,2),                   -- টাকা, তাই DECIMAL
+  copies       INT,
+  is_available BOOLEAN                         -- হ্যাঁ/না
+);
+```
+
+MySQL-এ একটা `YEAR` Type-ও আছে, কিন্তু সেটা শুধু 1901 থেকে 2155 সাল ধরে, পুরোনো বইয়ের জন্য তাই `SMALLINT` নিরাপদ।
+</Solution>
+</Boss>
+
+<Summary slug="level-1" />
+
+<Checkpoint questions={[
+  { q: "Table-এর একটা আড়াআড়ি লাইনকে কী বলে?", options: ["Column", "Row", "Database", "Type"], answer: 1, why: "Row (বা Record/Tuple) হলো একজন ছাত্রের মতো একটা জিনিসের সব তথ্য।" },
+  { q: "টাকার হিসাবের জন্য সবচেয়ে উপযুক্ত Type কোনটা?", options: ["FLOAT", "VARCHAR(10)", "DECIMAL(10,2)", "INT"], answer: 2, why: "DECIMAL নিখুঁত মান রাখে, FLOAT-এর মতো আনুমানিক না।" },
+  { q: "ফোন নম্বর কেন VARCHAR-এ রাখা ভালো?", options: ["VARCHAR দ্রুত", "শুরুর 0 হারায় না আর এ দিয়ে অঙ্ক হয় না", "INT-এ সংখ্যা রাখা যায় না", "নিয়ম নেই"], answer: 1, why: "যেটা দিয়ে অঙ্ক করবে না, সেটা লেখা হিসেবে রাখো।" },
+  { q: "DECIMAL(3,2)-এ সর্বোচ্চ কত বসবে?", options: ["999.99", "99.9", "9.99", "3.2"], answer: 2, why: "মোট ৩ অঙ্ক, তার ২টা দশমিকের পরে, তাই 9.99।" },
+  { q: "AUTO_INCREMENT কী করে?", options: ["প্রতিটা নতুন Row-এ নিজে থেকে পরের নম্বর বসায়", "টেবিল দ্রুত করে", "ডেটা এনক্রিপ্ট করে", "Column মুছে দেয়"], answer: 0, why: "নতুন Row ঢুকলে MySQL নিজেই 1, 2, 3... বসিয়ে দেয়।" }
+]} />

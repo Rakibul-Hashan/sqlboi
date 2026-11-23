@@ -1,0 +1,308 @@
+<Mission>
+- খারাপ ডিজাইনের তিনটা অসুখ: Insertion, Update আর Deletion **Anomaly**
+- **Functional Dependency** (X → Y): Normalization-এর মূল ভাষা
+- ধাপে ধাপে 1NF, 2NF, 3NF আর BCNF
+- কখন ইচ্ছে করে নিয়ম ভাঙা হয় (Denormalization)
+</Mission>
+
+<Story>
+লেভেল ১০-এ বলেছিলাম, "একটা তথ্য এক জায়গাতেই থাকবে।" সেটা ছিল অনুভূতি। আজ সেই অনুভূতিকে নিয়মে বাঁধব। **Normalization** হলো একটা টেবিলকে ধাপে ধাপে ভেঙে এমন অবস্থায় আনা, যেখানে পুনরাবৃত্তি নেই আর ডেটা নিজের সাথে কখনো বিরোধ করে না। নিয়মগুলোর ভিত্তি দিয়েছিলেন সেই Codd-ই।
+</Story>
+
+## রোগী: একটা খারাপ টেবিল
+
+স্কুলের পুরোনো ক্লার্ক Excel থেকে এই টেবিলটা বানিয়েছিলেন:
+
+| roll | student | class_teacher | class | subjects | teacher_phones |
+| --- | --- | --- | --- | --- | --- |
+| 1 | রাফি | হাসান স্যার | 8 | গণিত, বাংলা | 01700000101, 01700000102 |
+| 2 | নুসরাত | হাসান স্যার | 8 | গণিত | 01700000101 |
+| 4 | মীম | রুমানা ম্যাডাম | 9 | বাংলা, বিজ্ঞান | 01700000102, 01700000103 |
+
+পরীক্ষার জন্য MySQL-এও বানিয়ে নিই (পরে মুছে দেব):
+
+```sql
+CREATE TABLE bad_records (
+  roll          INT,
+  student       VARCHAR(100),
+  class_teacher VARCHAR(100),
+  class         TINYINT,
+  subjects      VARCHAR(200),
+  teacher_phones VARCHAR(200)
+);
+INSERT INTO bad_records VALUES
+  (1, 'রাফি', 'হাসান স্যার', 8, 'গণিত, বাংলা', '01700000101, 01700000102'),
+  (2, 'নুসরাত', 'হাসান স্যার', 8, 'গণিত', '01700000101'),
+  (4, 'মীম', 'রুমানা ম্যাডাম', 9, 'বাংলা, বিজ্ঞান', '01700000102, 01700000103');
+```
+
+## তিনটা অসুখ (Anomaly)
+
+**১. Update Anomaly.** ক্লাস ৮-এর শ্রেণিশিক্ষক বদলে কামাল স্যার হলেন। প্রতিটা ক্লাস ৮-এর লাইন বদলাতে হবে। একটা বাদ পড়লেই:
+
+```sql
+UPDATE bad_records SET class_teacher = 'কামাল স্যার' WHERE roll = 1;  -- নুসরাতকে ভুলে গেলাম
+SELECT DISTINCT class, class_teacher FROM bad_records WHERE class = 8;
+```
+
+| class | class_teacher |
+| --- | --- |
+| 8 | কামাল স্যার |
+| 8 | হাসান স্যার |
+
+ক্লাস ৮-এর এখন দুজন শ্রেণিশিক্ষক! ডেটা নিজের সাথে বিরোধ করছে।
+
+**২. Insertion Anomaly.** নতুন ক্লাস ১০-এর জন্য শিক্ষক ঠিক হয়েছেন, কিন্তু এখনো কোনো ছাত্র ভর্তি হয়নি। কোথায় লিখব? প্রতিটা লাইন একজন ছাত্রের, ছাত্র ছাড়া লাইন হয় না।
+
+**৩. Deletion Anomaly.** মীম স্কুল ছেড়ে দিল, তার লাইন মুছলাম। সাথে হারিয়ে গেল "ক্লাস ৯-এর শ্রেণিশিক্ষক রুমানা ম্যাডাম" তথ্যটাও, কারণ সেটা শুধু মীমের লাইনেই ছিল।
+
+তিনটা অসুখের মূল কারণ একটাই: **একটা টেবিলে একাধিক "বিষয়" (ছাত্র, ক্লাস, শিক্ষক) মিশে আছে।**
+
+## Functional Dependency: কে কাকে ঠিক করে
+
+**X → Y** পড়ো "X ঠিক করে Y" (X determines Y): X-এর একটা মান জানলে Y-এর মান একটাই হবে।
+
+- `roll → student` (রোল জানলে নাম জানি)
+- `class → class_teacher` (ক্লাস জানলে শ্রেণিশিক্ষক জানি)
+- `roll → class` (প্রতিটা ছাত্র একটা ক্লাসে)
+- `student → roll`? না, দুজন রাফি থাকতে পারে।
+
+বাঁ পাশের X-কে বলে **Determinant**। FD কোনো টেবিলের ডেটা দেখে প্রমাণ করা যায় না, এটা আসে বাস্তবের নিয়ম থেকে; ডেটা শুধু ভুল প্রমাণ করতে পারে।
+
+| পরিভাষা | মানে | উদাহরণ |
+| --- | --- | --- |
+| **Full FD** | Key-এর পুরোটা লাগে, অংশে চলে না | `(student_id, subject_id) → score` |
+| **Partial FD** | Composite Key-এর **একটা অংশই** যথেষ্ট | `(student_id, subject_id) → student_name`, অথচ `student_id`-ই যথেষ্ট |
+| **Transitive FD** | X → Y আর Y → Z, তাই X → Z পরোক্ষে | `roll → class → class_teacher` |
+| **Prime Attribute** | কোনো Candidate Key-এর অংশ | `student_id`, `subject_id` |
+
+## 1NF: প্রতিটা ঘরে একটা মান
+
+**নিয়ম:** প্রতিটা ঘর Atomic (একটা মান), কোনো Repeating Group নেই, আর প্রতিটা Row চেনার একটা Key আছে।
+
+`subjects`-এ "গণিত, বাংলা" 1NF ভাঙে। প্রতিটা মানকে নিজের লাইনে আনি:
+
+| roll | student | class_teacher | class | subject | teacher_phone |
+| --- | --- | --- | --- | --- | --- |
+| 1 | রাফি | হাসান স্যার | 8 | গণিত | 01700000101 |
+| 1 | রাফি | হাসান স্যার | 8 | বাংলা | 01700000102 |
+| 2 | নুসরাত | হাসান স্যার | 8 | গণিত | 01700000101 |
+| 4 | মীম | রুমানা ম্যাডাম | 9 | বাংলা | 01700000102 |
+| 4 | মীম | রুমানা ম্যাডাম | 9 | বিজ্ঞান | 01700000103 |
+
+Key এখন `(roll, subject)`। পুনরাবৃত্তি বরং বেড়েছে! চিন্তা নেই, 1NF শুধু প্রথম ধাপ।
+
+## 2NF: Partial Dependency নেই
+
+**নিয়ম:** 1NF + কোনো non-prime Attribute Composite Key-এর **অংশের** ওপর নির্ভর করবে না।
+
+Key `(roll, subject)`। দেখি কে কার ওপর নির্ভর করে:
+
+- `roll → student, class, class_teacher` → শুধু `roll` অংশ। **Partial!**
+- `subject → teacher_phone` (বিষয়ের শিক্ষকের ফোন) → শুধু `subject` অংশ। **Partial!**
+- `(roll, subject) → ?` → এই টেবিলে পুরো Key-এর ওপর নির্ভর করে এমন কিছু নেই; `marks` থাকলে এখানে `score` থাকত।
+
+সমাধান: প্রতিটা অংশের জন্য আলাদা টেবিল।
+
+```text
+students(roll, student, class, class_teacher)      -- Key: roll
+subjects(subject, teacher_phone)                    -- Key: subject
+enrollments(roll, subject)                          -- Key: (roll, subject)
+```
+
+<Tip title="একক Key মানেই 2NF?">
+যে টেবিলের Primary Key একটাই Column (Composite না), সেখানে "Key-এর অংশ" বলে কিছু নেই। তাই **1NF-এ থাকা একক-Key টেবিল নিজে থেকেই 2NF।** Partial Dependency-র প্রশ্ন ওঠে শুধু Composite Key-তে।
+</Tip>
+
+## 3NF: Transitive Dependency নেই
+
+**নিয়ম:** 2NF + কোনো non-prime Attribute অন্য একটা non-prime Attribute-এর ওপর নির্ভর করবে না।
+
+`students(roll, student, class, class_teacher)`-এ: `roll → class` আর `class → class_teacher`। মানে `class_teacher` রোলের ওপর সরাসরি না, ক্লাসের মাধ্যমে নির্ভর করে। **Transitive!** এটাই সেই Update Anomaly-র মূল।
+
+```text
+students(roll, student, class)          -- class এখন Foreign Key
+classes(class, class_teacher)           -- Key: class
+subjects(subject, teacher_phone)
+enrollments(roll, subject)
+```
+
+এখন শ্রেণিশিক্ষক বদলাতে **একটা** লাইন বদলাও। ক্লাস ১০-এর শিক্ষক ছাত্র ছাড়াই রাখা যায়। মীম চলে গেলেও রুমানা ম্যাডাম থাকেন `classes`-এ। তিনটা অসুখই সেরে গেছে।
+
+<Remember>
+**3NF-এর এক লাইনের মন্ত্র (Bill Kent-এর বিখ্যাত উক্তির ভাব): প্রতিটা non-key Attribute নির্ভর করবে "Key-এর ওপর, পুরো Key-এর ওপর, আর Key ছাড়া অন্য কিছুর ওপর না।"** "Key-এর ওপর" = 1NF, "পুরো Key" = 2NF, "আর কিছুর ওপর না" = 3NF।
+</Remember>
+
+## BCNF: 3NF-এর কড়া রূপ
+
+**নিয়ম (Boyce-Codd Normal Form):** প্রতিটা FD X → Y-তে (যেখানে Y, X-এর অংশ না), X অবশ্যই একটা **Super Key**।
+
+3NF বলে "non-prime Attribute" নিয়ে; BCNF কোনো ছাড় দেয় না, prime Attribute-ও। বেশির ভাগ 3NF টেবিল BCNF-ও। পার্থক্য ধরা পড়ে একটা বিশেষ অবস্থায়: যখন একাধিক Composite Candidate Key একে অন্যের সাথে overlap করে।
+
+ক্লাসিক উদাহরণ: কোচিং সেন্টারে নিয়ম, (১) প্রত্যেক শিক্ষক **একটাই** বিষয় পড়ান, (২) একটা বিষয় কয়েকজন শিক্ষক পড়াতে পারেন, (৩) একজন ছাত্র একটা বিষয় একজন শিক্ষকের কাছেই পড়ে।
+
+| student | subject | teacher |
+| --- | --- | --- |
+| রাফি | গণিত | হাসান স্যার |
+| নুসরাত | গণিত | জামিল স্যার |
+| রাফি | বাংলা | রুমানা ম্যাডাম |
+| মীম | গণিত | হাসান স্যার |
+
+- FD: `(student, subject) → teacher` (নিয়ম ৩), আর `teacher → subject` (নিয়ম ১)।
+- Candidate Key: `(student, subject)` আর `(student, teacher)`। তিনটা Attribute-ই prime।
+- **3NF?** হ্যাঁ। `teacher → subject`-এ `subject` prime, তাই 3NF ছাড় দেয়।
+- **BCNF?** না। `teacher` একা Super Key না (হাসান স্যারের দুজন ছাত্র), অথচ সে `subject` ঠিক করে।
+
+অসুখটা দেখো: হাসান স্যারের বিষয় "গণিত" দুবার লেখা। কেউ একটা লাইনে ভুলে "উচ্চতর গণিত" লিখলে নিয়ম ১ ভেঙে যাবে, আর কোনো Constraint আটকাবে না। সমাধান:
+
+```text
+teacher_subject(teacher, subject)        -- Key: teacher
+student_teacher(student, teacher)        -- Key: (student, teacher)
+```
+
+<Note title="BCNF-এর একটা মূল্য আছে">
+ভাঙার পরে নিয়ম ৩ ("একজন ছাত্র একটা বিষয় একজন শিক্ষকের কাছেই") আর কোনো একক টেবিলের Key দিয়ে প্রয়োগ করা যায় না; রাফিকে হাসান স্যার আর জামিল স্যার দুজনের কাছেই গণিতে ভর্তি করা যাবে। একে বলে **Dependency Preservation** হারানো। তাই বাস্তবে অনেকে 3NF-এ থেমে যায়। 3NF সবসময় Dependency রক্ষা করে ভাঙা যায়; BCNF সবসময় যায় না।
+</Note>
+
+## সারাংশ
+
+| ধাপ | শর্ত | কী সারায় |
+| --- | --- | --- |
+| **1NF** | Atomic মান, Repeating Group নেই, Key আছে | এক ঘরে কমা দেওয়া তালিকা |
+| **2NF** | 1NF + Partial Dependency নেই | Composite Key-এর অংশের ওপর নির্ভরতা |
+| **3NF** | 2NF + Transitive Dependency নেই | non-key → non-key নির্ভরতা |
+| **BCNF** | প্রতিটা Determinant একটা Super Key | prime Attribute-এর অবশিষ্ট অসুখ |
+
+(এর ওপরে 4NF আর 5NF আছে, Multi-valued আর Join Dependency নিয়ে; বেশির ভাগ কোর্সে শুধু নাম জানলেই চলে।)
+
+## Denormalization: ইচ্ছাকৃত নিয়মভঙ্গ
+
+ভালোভাবে Normalize করা Database-এ রিপোর্ট বানাতে অনেক JOIN লাগে। খুব বড় সিস্টেমে (লাখো Row, প্রতি সেকেন্ডে হাজার পড়া) কখনো কখনো ইচ্ছে করে একটা তথ্য দুই জায়গায় রাখা হয়, যেমন `orders` টেবিলে `customer_name` রেখে দেওয়া, বা প্রতিটা পোস্টে `like_count` জমিয়ে রাখা, যাতে প্রতিবার গুনতে না হয়।
+
+নিয়ম: **আগে Normalize করো, মেপে দেখো ধীর কি না, তারপর প্রয়োজন হলে ঠিক যেখানে দরকার সেখানে Denormalize করো,** আর দুই জায়গার ডেটা মিলিয়ে রাখার ব্যবস্থা (Trigger বা অ্যাপের কোড) রাখো।
+
+```sql
+DROP TABLE bad_records;   -- রোগী বিদায়
+```
+
+<BugMonster title="Normalization-এর ভুল বোঝাবুঝি">
+
+**১. "1NF মানে কমা নেই, ব্যস।"** `phone1, phone2, phone3` Column-ও 1NF-এর আত্মা ভাঙে (Repeating Group), যদিও প্রতিটা ঘরে একটাই মান।
+
+**২. ডেটা দেখে FD ঠিক করা।** আজকের তিনটা লাইনে দুজনের একই নাম নেই বলে `student → roll` সত্যি না। FD আসে বাস্তবের নিয়ম থেকে।
+
+**৩. একক Key টেবিলে Partial Dependency খোঁজা।** একক Key-তে Partial হয় না; সরাসরি 3NF-এর প্রশ্নে যাও।
+
+**৪. সবকিছু ভেঙে টুকরো করা।** `first_name` আর `last_name` আলাদা টেবিলে রাখা Normalization না, অতিরিক্ত জটিলতা। ভাঙবে তখনই, যখন একটা FD সমস্যা তৈরি করছে।
+
+</BugMonster>
+
+<Quest id="1" title="FD খোঁজো">
+`orders(order_id, customer_id, customer_name, customer_city, product_id, product_name, unit_price, quantity)`, যেখানে একটা অর্ডারে অনেক পণ্য থাকতে পারে। Primary Key কী? সব FD লেখো।
+
+<Solution>
+Primary Key: `(order_id, product_id)`।
+
+- `order_id → customer_id` (একটা অর্ডার একজন কাস্টমারের)
+- `customer_id → customer_name, customer_city`
+- `product_id → product_name, unit_price`
+- `(order_id, product_id) → quantity`
+
+(বাস্তবে `unit_price` সময়ের সাথে বদলায়; তখন অর্ডারের সময়ের দাম `(order_id, product_id)`-এর ওপর নির্ভর করবে। পরের Quest-এ এটা মাথায় রাখো।)
+</Solution>
+</Quest>
+
+<Quest id="2" title="3NF-এ ভাঙো">
+Quest ১-এর টেবিলকে 3NF পর্যন্ত ভাঙো। প্রতিটা ধাপে কোন Dependency সরালে, লেখো।
+
+<Solution>
+- **2NF:** Partial Dependency সরাও। `order_id → customer_id, customer_name, customer_city` আর `product_id → product_name, unit_price` আলাদা হলো:
+  `orders(order_id, customer_id, customer_name, customer_city)`, `products(product_id, product_name, unit_price)`, `order_items(order_id, product_id, quantity)`
+- **3NF:** `orders`-এ `order_id → customer_id → customer_name, customer_city` Transitive। আলাদা করো:
+  `customers(customer_id, customer_name, customer_city)`, `orders(order_id, customer_id)`
+
+চূড়ান্ত: `customers`, `orders`, `products`, `order_items`। আর বাস্তবের জন্য একটা পরামর্শ: `order_items`-এ `price_at_purchase` রাখো। এটা Denormalization না, কারণ অর্ডারের সময়ের দাম আর আজকের দাম দুটো **আলাদা তথ্য**।
+</Solution>
+</Quest>
+
+<Quest id="3" title="কোন ফর্মে আছে?">
+`exam_seats(room, seat_no, student_id, exam_date)`। নিয়ম: একটা রুমের একটা সিটে একদিনে একজনই, আর একজন ছাত্র একদিনে একটাই সিট পায়। এটা কি BCNF?
+
+<Solution>
+Candidate Key: `(room, seat_no, exam_date)` আর `(student_id, exam_date)`। দুটো FD: `(room, seat_no, exam_date) → student_id` আর `(student_id, exam_date) → room, seat_no`। দুটোরই বাঁ পাশ Candidate Key, মানে Super Key। তাই **BCNF।** Overlap থাকা মানেই BCNF ভঙ্গ না; দেখতে হবে কোনো Determinant Super Key ছাড়া আছে কি না।
+</Solution>
+</Quest>
+
+<Boss title="ক্যান্টিনের খাতা">
+স্কুল ক্যান্টিনের একটা টেবিল:
+
+`canteen(bill_no, bill_date, student_roll, student_name, student_class, items, item_prices, total)`
+
+উদাহরণ লাইন: `(501, '2026-11-16', 1, 'রাফি', 8, 'সিঙাড়া, চা', '10, 15', 25)`
+
+(১) প্রতিটা ফর্ম কোথায় ভাঙছে বলো; (২) BCNF পর্যন্ত ভাঙো; (৩) MySQL টেবিল লেখো, জোন ২-এর `students` টেবিলকে কাজে লাগিয়ে।
+
+<Solution title="ইঙ্গিত ১">
+প্রথমে 1NF: `items`-এ কমা দিয়ে কয়েকটা জিনিস, মানে একটা ঘরে একাধিক মান। তারপর Functional Dependency খোঁজো: `student_roll` থেকে কী কী বের হয়? খাবারের নাম থেকে দাম?
+</Solution>
+
+<Solution title="ইঙ্গিত ২">
+শেষে তিনটা টেবিল দাঁড়ায়: খাবার (দামসহ), বিল (কে, কবে), আর বিলের লাইন (কোন বিলে কোন খাবার কয়টা)। ছাত্রের নাম-ক্লাস আবার রাখার দরকার নেই, `students` তো আছেই। আর `total` রাখবে কি না ভাবো: সেটা হিসাব করেই পাওয়া যায়।
+</Solution>
+
+<Solution>
+**১. সমস্যা**
+- **1NF ভাঙে:** `items` আর `item_prices`-এ তালিকা।
+- 1NF-এ আনার পর Key `(bill_no, item)`। **2NF ভাঙে:** `bill_no → bill_date, student_roll, total` আর `item → price`।
+- **3NF ভাঙে:** `bill_no → student_roll → student_name, student_class`।
+- `total` আসলে Derived (দাম × পরিমাণের যোগফল)।
+
+**২. ভাঙা রূপ:** `menu_items(item, price)`, `bills(bill_no, bill_date, student_id)`, `bill_items(bill_no, item, quantity, unit_price)`, আর ছাত্রের তথ্য তো `students`-এ আছেই।
+
+**৩. MySQL**
+
+```sql
+CREATE TABLE menu_items (
+  id    INT AUTO_INCREMENT PRIMARY KEY,
+  name  VARCHAR(60) NOT NULL UNIQUE,
+  price DECIMAL(6,2) NOT NULL CHECK (price > 0)
+);
+
+CREATE TABLE bills (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  billed_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  student_id INT NOT NULL,
+  FOREIGN KEY (student_id) REFERENCES students(id)
+);
+
+CREATE TABLE bill_items (
+  bill_id    INT NOT NULL,
+  item_id    INT NOT NULL,
+  quantity   TINYINT UNSIGNED NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  unit_price DECIMAL(6,2) NOT NULL,       -- বিক্রির সময়ের দাম, ইতিহাস রক্ষার জন্য
+  PRIMARY KEY (bill_id, item_id),
+  FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE CASCADE,
+  FOREIGN KEY (item_id) REFERENCES menu_items(id)
+);
+
+-- total আর জমিয়ে রাখি না, দরকার হলে হিসাব করি:
+SELECT b.id, s.name, SUM(bi.quantity * bi.unit_price) AS total
+FROM bills b
+JOIN students s    ON s.id = b.student_id
+JOIN bill_items bi ON bi.bill_id = b.id
+GROUP BY b.id, s.name;
+```
+
+শেষ প্রশ্ন নিজেকে করো: `bill_items.unit_price` কি `menu_items.price`-এর পুনরাবৃত্তি? না, কাল সিঙাড়ার দাম ১২ টাকা হলেও আজকের বিলে ১০ টাকাই থাকতে হবে। একই রকম দেখতে হলেও এটা আলাদা তথ্য।
+</Solution>
+</Boss>
+
+<Summary slug="level-15" />
+
+<Checkpoint questions={[
+  { q: "শ্রেণিশিক্ষক বদলাতে অনেক লাইন বদলাতে হয়, একটা বাদ পড়লে গরমিল — এটা কোন Anomaly?", options: ["Insertion", "Update", "Deletion", "Selection"], answer: 1, why: "একই তথ্য অনেক জায়গায় থাকলে আপডেটে গরমিল হয়।" },
+  { q: "2NF কোন ধরনের Dependency সরায়?", options: ["Transitive", "Partial", "Multi-valued", "Full"], answer: 1, why: "Composite Key-এর অংশের ওপর নির্ভরতাই Partial Dependency।" },
+  { q: "roll → class আর class → class_teacher — তাহলে roll → class_teacher কোন ধরনের?", options: ["Partial", "Full", "Transitive", "Trivial"], answer: 2, why: "পরোক্ষ নির্ভরতা, যা 3NF সরায়।" },
+  { q: "একক-Column Primary Key-এর 1NF টেবিল কি স্বয়ংক্রিয়ভাবে 2NF?", options: ["হ্যাঁ", "না", "শুধু INT হলে", "শুধু AUTO_INCREMENT হলে"], answer: 0, why: "Key-এর 'অংশ' বলে কিছু নেই, তাই Partial Dependency হতে পারে না।" },
+  { q: "BCNF-এর শর্ত কী?", options: ["কোনো NULL নেই", "প্রতিটা Determinant একটা Super Key", "সব Key একক Column", "কোনো Foreign Key নেই"], answer: 1, why: "X → Y থাকলে X-কে অবশ্যই পুরো Row চেনাতে পারতে হবে।" }
+]} />

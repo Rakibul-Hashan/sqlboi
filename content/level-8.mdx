@@ -1,0 +1,301 @@
+<Mission>
+- `GROUP BY` দিয়ে Row-গুলোকে দলে ভাগ করে প্রতিটা দলের আলাদা হিসাব
+- `HAVING` দিয়ে দল ছাঁকা, আর `WHERE`-এর সাথে এর পার্থক্য
+- **Execution Order**: MySQL আসলে কোন ক্রমে তোমার Query পড়ে, আর এটা জানলে অনেক রহস্যের সমাধান হয়ে যায়
+</Mission>
+
+লেভেল ৭-এর শেষে হেডস্যার চেয়েছিলেন "প্রতিটা ক্লাসের আলাদা হিসাব"। আজ সেটা এক Query-তে।
+
+## GROUP BY: দলে ভাগ করো
+
+কল্পনা করো, মাঠে সব ছাত্রকে ডেকে বললে, "নিজের ক্লাসের লাইনে দাঁড়াও।" তিনটা লাইন হলো। এবার প্রতিটা লাইনে গুনলে কতজন। এটাই `GROUP BY`।
+
+```sql
+SELECT class, COUNT(*) AS students
+FROM students
+GROUP BY class
+ORDER BY class;
+```
+
+| class | students |
+| --- | --- |
+| 8 | 4 |
+| 9 | 3 |
+| 10 | 3 |
+
+একসাথে কয়েকটা হিসাব:
+
+```sql
+SELECT city, COUNT(*) AS students, ROUND(AVG(gpa), 2) AS avg_gpa
+FROM students
+GROUP BY city
+ORDER BY students DESC, city;
+```
+
+| city | students | avg_gpa |
+| --- | --- | --- |
+| ঢাকা | 4 | 4.26 |
+| চট্টগ্রাম | 2 | 5.00 |
+| খুলনা | 1 | 3.50 |
+| বরিশাল | 1 | 4.95 |
+| রাজশাহী | 1 | 2.90 |
+| সিলেট | 1 | 4.25 |
+
+চট্টগ্রামের গড় 5.00, কারণ ফারিহার `NULL` বাদ পড়েছে, শুধু নুসরাতের GPA গোনা হয়েছে। লেভেল ৭-এর নিয়মটা দলের ভেতরেও খাটে।
+
+### একাধিক Column দিয়ে দল
+
+```sql
+SELECT class, section, COUNT(*) AS n, MAX(gpa) AS best
+FROM students
+GROUP BY class, section
+ORDER BY class, section;
+```
+
+| class | section | n | best |
+| --- | --- | --- | --- |
+| 8 | A | 2 | 5.00 |
+| 8 | B | 2 | 4.95 |
+| 9 | A | 2 | 4.80 |
+| 9 | B | 1 | 2.90 |
+| 10 | A | 2 | 4.00 |
+| 10 | B | 1 | NULL |
+
+এখন প্রতিটা (ক্লাস, সেকশন) জোড়া একটা দল।
+
+### হিসাব দিয়েও দল
+
+```sql
+SELECT YEAR(birth_date) AS born, COUNT(*) AS n
+FROM students
+GROUP BY born
+ORDER BY born;
+```
+
+| born | n |
+| --- | --- |
+| 2008 | 1 |
+| 2009 | 3 |
+| 2010 | 3 |
+| 2011 | 3 |
+
+`CASE` দিয়ে নিজের বানানো দলও হয়:
+
+```sql
+SELECT CASE
+         WHEN gpa >= 4.00 THEN 'A বা বেশি'
+         WHEN gpa IS NULL THEN 'আসেনি'
+         ELSE 'A-এর নিচে'
+       END AS band,
+       COUNT(*) AS n
+FROM students
+GROUP BY band;
+```
+
+| band | n |
+| --- | --- |
+| A বা বেশি | 6 |
+| A-এর নিচে | 3 |
+| আসেনি | 1 |
+
+### GROUP_CONCAT: দলের সবার নাম এক লাইনে
+
+```sql
+SELECT class, GROUP_CONCAT(name ORDER BY roll SEPARATOR ', ') AS names
+FROM students
+GROUP BY class;
+```
+
+| class | names |
+| --- | --- |
+| 8 | রাফি, নুসরাত, তানভীর, লামিয়া |
+| 9 | মীম, আরিফ, সাদিয়া |
+| 10 | জুবায়ের, ফারিহা, ইমরান |
+
+<Remember>
+**`GROUP BY` থাকলে `SELECT`-এ শুধু দুই রকম জিনিস রাখা যায়: যে Column দিয়ে দল বানিয়েছ, আর Aggregate Function।** দলের ভেতরে তিন-চারজন থাকলে "নাম" কোনটা দেখাবে? তাই `SELECT class, name, COUNT(*) ... GROUP BY class` MySQL 8-এ `ERROR 1055` দেয় (`only_full_group_by` নিয়ম)। MariaDB-তে এই নিয়ম ডিফল্টে বন্ধ থাকে, তাই সেখানে error না দিয়ে যেকোনো একটা নাম চুপচাপ দেখিয়ে দেয়, যা ভুল রিপোর্টের জন্ম দেয়।
+</Remember>
+
+## HAVING: দল ছাঁকো
+
+যেসব শহর থেকে অন্তত ২ জন এসেছে:
+
+```sql
+SELECT city, COUNT(*) AS n
+FROM students
+GROUP BY city
+HAVING COUNT(*) >= 2;
+```
+
+| city | n |
+| --- | --- |
+| ঢাকা | 4 |
+| চট্টগ্রাম | 2 |
+
+`WHERE` আর `HAVING` দুটোই ছাঁকনি, কিন্তু ভিন্ন সময়ে:
+
+| | `WHERE` | `HAVING` |
+| --- | --- | --- |
+| কী ছাঁকে | এক একটা **Row** | এক একটা **দল** |
+| কখন | দল বানানোর **আগে** | দল বানানোর **পরে** |
+| Aggregate ব্যবহার করা যায়? | না | হ্যাঁ |
+
+দুটো একসাথে: ঢাকার বাইরের ছাত্রদের নিয়ে, কোন ক্লাসের গড় GPA 4.00-এর বেশি?
+
+```sql
+SELECT class, ROUND(AVG(gpa), 2) AS avg_gpa
+FROM students
+WHERE city <> 'ঢাকা'          -- আগে Row ছাঁকো
+GROUP BY class                 -- তারপর দল বানাও
+HAVING AVG(gpa) > 4.00;        -- তারপর দল ছাঁকো
+```
+
+| class | avg_gpa |
+| --- | --- |
+| 8 | 4.98 |
+
+<Tip title="পারলে WHERE, দরকার হলে HAVING">
+যে শর্ত Row-এর ওপরেই বসানো যায় (যেমন `city <> 'ঢাকা'`), সেটা **`HAVING`-এ না দিয়ে `WHERE`-এ দাও।** তাহলে MySQL শুরুতেই অপ্রয়োজনীয় Row ফেলে দেয়, আর কম ডেটা দিয়ে দল বানায়, ফলে Query দ্রুত হয়। `HAVING` শুধু Aggregate-এর শর্তের জন্য।
+</Tip>
+
+## Execution Order: MySQL কোন ক্রমে পড়ে
+
+আমরা Query **লিখি** এক ক্রমে, কিন্তু MySQL **চালায়** আরেক ক্রমে:
+
+| লেখার ক্রম | চালানোর ক্রম | কী ঘটে |
+| --- | --- | --- |
+| ১. `SELECT` | ১. `FROM` | কোন টেবিল থেকে |
+| ২. `FROM` | ২. `WHERE` | Row ছাঁকা |
+| ৩. `WHERE` | ৩. `GROUP BY` | দলে ভাগ |
+| ৪. `GROUP BY` | ৪. `HAVING` | দল ছাঁকা |
+| ৫. `HAVING` | ৫. `SELECT` | কোন Column দেখাবে, Alias এখানে জন্মায় |
+| ৬. `ORDER BY` | ৬. `ORDER BY` | সাজানো |
+| ৭. `LIMIT` | ৭. `LIMIT` | কয়টা |
+
+এই একটা টেবিল দিয়ে আগের লেভেলগুলোর অনেক রহস্যের সমাধান:
+
+- **`WHERE`-এ Alias কেন চলে না?** কারণ `WHERE` চলে ধাপ ২-এ, আর Alias জন্মায় ধাপ ৫-এ। `WHERE` চলার সময় নামটা তখনো অস্তিত্বেই নেই।
+
+```sql
+SELECT class, gpa * 20 AS p FROM students WHERE p > 90;
+-- ERROR 1054: Unknown column 'p' in 'where clause'
+```
+
+- **`ORDER BY`-তে Alias কেন চলে?** কারণ `ORDER BY` চলে `SELECT`-এর পরে।
+- **`WHERE`-এ `AVG()` কেন চলে না?** কারণ ধাপ ২-এ দলই বানানো হয়নি, গড় হবে কিসের?
+
+<Note title="MySQL-এর একটা বাড়তি সুবিধা">
+স্ট্যান্ডার্ড SQL অনুযায়ী `HAVING`-এও Alias চলার কথা না, কারণ এটা `SELECT`-এর আগে চলে। কিন্তু MySQL এখানে উদার, `HAVING avg_gpa >= 4.00` লিখতে দেয়:
+
+```sql
+SELECT class, ROUND(AVG(gpa), 2) AS avg_gpa
+FROM students
+GROUP BY class
+HAVING avg_gpa >= 4.00
+ORDER BY avg_gpa DESC;
+```
+
+PostgreSQL-এর মতো অন্য Database-এ এটা error দেবে। পরীক্ষার খাতায় বা অন্য Database-এ কাজ করলে `HAVING AVG(gpa) >= 4.00` লেখাই নিরাপদ।
+</Note>
+
+<BugMonster title="দল বাঁধতে গিয়ে">
+
+**১. `ERROR 1055 ... not in GROUP BY clause`।** `SELECT`-এ এমন Column আছে যেটা `GROUP BY`-তেও নেই, Aggregate-এর ভেতরেও নেই। হয় সেটা `GROUP BY`-তে যোগ করো, নয়তো সরিয়ে দাও।
+
+**২. `GROUP BY` দিলেই সাজানো হয়ে যাবে ভাবা।** MySQL 5.7 পর্যন্ত `GROUP BY` ফলাফল চুপচাপ সাজিয়ে দিত, MySQL 8 আর দেয় না। ক্রম দরকার হলে `ORDER BY` লেখো।
+
+**৩. `HAVING`-এ এমন শর্ত যেটা `WHERE`-এ থাকা উচিত।** উত্তর ঠিক আসে, কিন্তু Query অকারণে ধীর হয়।
+
+**৪. `COUNT(*)` দলের ভেতরে `NULL`-ও গোনে।** ক্লাস ১০-B-তে `COUNT(*)` = 1 (ফারিহা), কিন্তু `COUNT(gpa)` = 0।
+
+</BugMonster>
+
+<Quest id="1" title="সেকশনভিত্তিক তালিকা">
+প্রতিটা সেকশনে (A, B) কতজন, আর তাদের গড় GPA, সেকশন অনুযায়ী সাজিয়ে।
+
+<Solution>
+```sql
+SELECT section, COUNT(*) AS n, ROUND(AVG(gpa), 2) AS avg_gpa
+FROM students
+GROUP BY section
+ORDER BY section;
+```
+</Solution>
+</Quest>
+
+<Quest id="2" title="ফোনহীন শহর">
+প্রতিটা শহরে কতজনের ফোন নম্বর নেই? শুধু যেসব শহরে অন্তত একজনের নেই, সেগুলো দেখাও।
+
+<Solution>
+```sql
+SELECT city, COUNT(*) - COUNT(phone) AS no_phone
+FROM students
+GROUP BY city
+HAVING no_phone > 0;
+```
+
+ঢাকা (২: তানভীর আর ইমরান), রাজশাহী (১: আরিফ)।
+</Solution>
+</Quest>
+
+<Quest id="3" title="ক্রম সাজাও">
+এই Query-র প্রতিটা অংশ MySQL কোন ক্রমে চালাবে, ১ থেকে ৭ নম্বর দাও:
+
+```sql
+SELECT city, COUNT(*) AS n
+FROM students
+WHERE class >= 9
+GROUP BY city
+HAVING n > 1
+ORDER BY n DESC
+LIMIT 2;
+```
+
+<Solution>
+`FROM` (১) → `WHERE` (২) → `GROUP BY` (৩) → `HAVING` (৪) → `SELECT` (৫) → `ORDER BY` (৬) → `LIMIT` (৭)। ফলাফল: শুধু ঢাকা (২ জন: সাদিয়া আর ইমরান)।
+</Solution>
+</Quest>
+
+<Boss title="প্রতি ক্লাসের ড্যাশবোর্ড">
+লেভেল ৭-এর বস চ্যালেঞ্জের ড্যাশবোর্ডটা এবার **প্রতিটা ক্লাসের জন্য আলাদা লাইনে** বানাও: মোট ছাত্র, ঢাকার শতাংশ, গড় GPA, A+ সংখ্যা, GPA-র পরিসর। তারপর শুধু সেই ক্লাসগুলো রাখো যাদের গড় GPA 3.80 বা বেশি।
+
+<Solution title="ইঙ্গিত ১">
+লেভেল ৭-এর Query-টাই নাও, শেষে `GROUP BY class` যোগ করো, আর `SELECT`-এ `class` রাখো।
+</Solution>
+
+<Solution title="ইঙ্গিত ২">
+"গড় 3.80 বা বেশি" দলের হিসাবের ওপর শর্ত, তাই `WHERE` না, `HAVING`।
+</Solution>
+
+<Solution>
+```sql
+SELECT class,
+       COUNT(*) AS total,
+       ROUND(SUM(city = 'ঢাকা') * 100 / COUNT(*), 1) AS dhaka_pct,
+       ROUND(AVG(gpa), 2) AS avg_gpa,
+       SUM(gpa = 5.00) AS a_plus,
+       MAX(gpa) - MIN(gpa) AS gpa_range
+FROM students
+GROUP BY class
+HAVING AVG(gpa) >= 3.80
+ORDER BY class;
+```
+
+| class | total | dhaka_pct | avg_gpa | a_plus | gpa_range |
+| --- | --- | --- | --- | --- | --- |
+| 8 | 4 | 50.0 | 4.55 | 1 | 1.25 |
+| 9 | 3 | 33.3 | 3.98 | 0 | 1.90 |
+
+ক্লাস ১০ বাদ পড়েছে (গড় 3.75)। লেভেল ৭-এ তিনবার আলাদা Query লাগত; এখন একটাই।
+</Solution>
+</Boss>
+
+<Summary slug="level-8" />
+
+<Checkpoint questions={[
+  { q: "WHERE আর HAVING-এর মূল পার্থক্য কী?", options: ["কোনো পার্থক্য নেই", "WHERE Row ছাঁকে দল বানানোর আগে, HAVING দল ছাঁকে দল বানানোর পরে", "HAVING আগে চলে", "WHERE শুধু সংখ্যায় চলে"], answer: 1, why: "Execution Order-এ WHERE ধাপ ২, HAVING ধাপ ৪।" },
+  { q: "MySQL কোন ক্রমে চালায়?", options: ["SELECT → FROM → WHERE", "FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT", "FROM → SELECT → WHERE", "WHERE → FROM → SELECT"], answer: 1, why: "এই ক্রমটা মনে রাখলে Alias আর Aggregate নিয়ে বেশির ভাগ রহস্য মিটে যায়।" },
+  { q: "WHERE-এ SELECT-এর Alias কেন ব্যবহার করা যায় না?", options: ["Alias গোপন থাকে", "WHERE চলে SELECT-এর আগে, তখন Alias তৈরিই হয়নি", "MySQL-এর বাগ", "Alias শুধু সংখ্যার জন্য"], answer: 1, why: "Alias জন্মায় SELECT ধাপে, যেটা WHERE-এর পরে।" },
+  { q: "SELECT class, name, COUNT(*) FROM students GROUP BY class; MySQL 8-এ কী হয়?", options: ["ঠিকঠাক চলে", "ERROR 1055", "শুধু প্রথম নাম আসে", "সব নাম আসে"], answer: 1, why: "name GROUP BY-তে নেই, Aggregate-এর ভেতরেও নেই।" },
+  { q: "'অন্তত ৩ জন ছাত্র আছে এমন শহর' — শর্তটা কোথায় বসবে?", options: ["WHERE COUNT(*) >= 3", "HAVING COUNT(*) >= 3", "ORDER BY COUNT(*)", "LIMIT 3"], answer: 1, why: "দলের আকারের শর্ত, তাই দল বানানোর পরে: HAVING।" }
+]} />

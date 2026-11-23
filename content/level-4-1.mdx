@@ -1,0 +1,336 @@
+<Story title="জোন ৪: মাস্টার ক্লাস">
+রাজধানী জয় হয়েছে। এবার শহরের সবচেয়ে উঁচু দালানে, মাস্টার ক্লাসে। এখানে নতুন কিছু না, বরং যা জানো সেগুলোকেই ধারালো করা: এক Query-তে যা আগে তিনটা লাগত, চাকরির ইন্টারভিউ আর ইউনির পরীক্ষায় যে "কঠিন" প্রশ্নগুলো আসে, সেগুলো। প্রথম ক্লাস: ডেটা লেখার উন্নত কৌশল।
+</Story>
+
+<Mission>
+- `INSERT ... SELECT`: এক টেবিলের ডেটা দিয়ে আরেক টেবিল ভরা
+- `INSERT IGNORE`, **Upsert** (`ON DUPLICATE KEY UPDATE`) আর `REPLACE`, আর এদের পার্থক্য
+- `UPDATE ... JOIN` আর `DELETE ... JOIN`: অন্য টেবিল দেখে বদলানো বা মোছা
+- `CREATE TABLE ... AS SELECT` আর `CREATE TABLE ... LIKE`
+- বিখ্যাত `ERROR 1093` আর তার সমাধান
+</Mission>
+
+<Note title="শুরুর আগে">
+জোন ২-এর খাতা ([school-zone2.sql](/sql/school-zone2.sql)) আবার চালিয়ে পরিষ্কার অবস্থায় শুরু করো। এই লেভেলে আমরা ডেটা বদলাব; শেষে আবার চালালেই আগের অবস্থা ফিরে আসবে।
+</Note>
+
+## INSERT ... SELECT: টেবিল থেকে টেবিলে
+
+লেভেল ২-এ `INSERT` মানে ছিল হাতে লেখা `VALUES`। কিন্তু `VALUES`-এর জায়গায় একটা পুরো `SELECT`-ও বসানো যায়। স্কুলের "সম্মান তালিকা" বানাই, যেখানে GPA 4.50 বা বেশি এমন সবাই:
+
+```sql
+CREATE TABLE honor_roll (
+  student_id INT PRIMARY KEY,
+  name       VARCHAR(100) NOT NULL,
+  gpa        DECIMAL(3,2) NOT NULL,
+  added_on   DATE NOT NULL DEFAULT (CURRENT_DATE),
+  FOREIGN KEY (student_id) REFERENCES students(id)
+);
+
+INSERT INTO honor_roll (student_id, name, gpa)
+SELECT id, name, gpa FROM students WHERE gpa >= 4.50;
+
+SELECT student_id, name, gpa FROM honor_roll ORDER BY gpa DESC;
+```
+
+| student_id | name | gpa |
+| --- | --- | --- |
+| 2 | নুসরাত | 5.00 |
+| 10 | লামিয়া | 4.95 |
+| 6 | সাদিয়া | 4.80 |
+| 1 | রাফি | 4.50 |
+
+চারজনকে একবারে ঢুকিয়ে দিল, `VALUES` ছাড়াই। নিয়ম শুধু একটা: `SELECT`-এর Column সংখ্যা আর ক্রম `INSERT`-এর তালিকার সাথে মিলতে হবে। (`DEFAULT (CURRENT_DATE)` লেভেল ৯-এর বস চ্যালেঞ্জে দেখেছিলাম; MySQL 8.0.13+।)
+
+## ডুপ্লিকেট এলে কী করবে? তিনটা উপায়
+
+এবার সীমা কমিয়ে 4.25 করি। কিন্তু রাফি, নুসরাতরা তো আগে থেকেই তালিকায় আছে:
+
+```sql
+INSERT INTO honor_roll (student_id, name, gpa)
+SELECT id, name, gpa FROM students WHERE gpa >= 4.25;
+```
+
+<ErrorBox title="ERROR 1062">
+Duplicate entry '1' for key 'honor_roll.PRIMARY'
+</ErrorBox>
+
+পুরো কমান্ডটাই বাতিল হলো; নতুন মীমও ঢুকল না। এমন অবস্থায় MySQL তিনটা আলাদা আচরণ দিতে পারে।
+
+### ১. INSERT IGNORE: ডুপ্লিকেট চুপচাপ বাদ
+
+```sql
+INSERT IGNORE INTO honor_roll (student_id, name, gpa)
+SELECT id, name, gpa FROM students WHERE gpa >= 4.25;
+
+SELECT student_id, name FROM honor_roll ORDER BY student_id;
+```
+
+| student_id | name |
+| --- | --- |
+| 1 | রাফি |
+| 2 | নুসরাত |
+| 4 | মীম |
+| 6 | সাদিয়া |
+| 10 | লামিয়া |
+
+শুধু নতুন মীম ঢুকল (`ROW_COUNT()` = 1); বাকিদের ডুপ্লিকেট error বদলে গেল warning-এ, যা `SHOW WARNINGS;` দিয়ে দেখা যায়।
+
+### ২. Upsert: থাকলে আপডেট, না থাকলে ইনসার্ট
+
+প্রতিটা ছাত্রের মোট নম্বরের একটা টেবিল রাখতে চাই, যেটা নম্বর বদলালে আবার চালিয়ে হালনাগাদ করা যাবে:
+
+```sql
+CREATE TABLE student_totals_t (
+  student_id INT PRIMARY KEY,
+  total      INT NOT NULL,
+  exams      TINYINT NOT NULL
+);
+
+INSERT INTO student_totals_t (student_id, total, exams)
+SELECT * FROM (
+  SELECT student_id, SUM(score) AS total, COUNT(*) AS exams
+  FROM marks GROUP BY student_id
+) AS new
+ON DUPLICATE KEY UPDATE total = new.total, exams = new.exams;
+```
+
+প্রথমবার ৯টা লাইন ঢুকল। এবার রাফির গণিতের নম্বর পুনর্মূল্যায়নে ৯৯ হলো, আর আমরা ঠিক একই `INSERT` আবার চালালাম:
+
+```sql
+UPDATE marks SET score = 99 WHERE student_id = 1 AND subject_id = 1;
+
+INSERT INTO student_totals_t (student_id, total, exams)
+SELECT * FROM (
+  SELECT student_id, SUM(score) AS total, COUNT(*) AS exams
+  FROM marks GROUP BY student_id
+) AS new
+ON DUPLICATE KEY UPDATE total = new.total, exams = new.exams;
+
+SELECT * FROM student_totals_t WHERE student_id IN (1, 2);
+```
+
+| student_id | total | exams |
+| --- | --- | --- |
+| 1 | 267 | 3 |
+| 2 | 285 | 3 |
+
+রাফির মোট ২৫৩ থেকে ২৬৭ হলো, বাকিরা যেমন ছিল তেমনই। এই কমান্ডের পরে `ROW_COUNT()` দেয় **২**: Upsert-এ নতুন লাইন গোনা হয় ১, বদলানো লাইন ২, আর অপরিবর্তিত লাইন ০।
+
+<Note title="VALUES() নাকি alias?">
+লেভেল ১৭-এ লিখেছিলাম `ON DUPLICATE KEY UPDATE score = VALUES(score)`। এটা এখনো চলে, কিন্তু MySQL 8.0.20 থেকে warning দেয় (`1287: 'VALUES function' is deprecated`)। নতুন নিয়ম: নতুন মানগুলোর একটা নাম (alias) দাও। `VALUES (...)` দিয়ে লিখলে `VALUES (...) AS new`; আর `INSERT ... SELECT`-এ ওপরের মতো `SELECT`-টাকে একটা Derived Table বানিয়ে নাম দাও। (MariaDB alias বোঝে না; সেখানে `VALUES()`-ই লেখো।)
+</Note>
+
+### ৩. REPLACE: পুরোনোটা মুছে নতুন
+
+```sql
+CREATE TABLE settings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  k  VARCHAR(30) NOT NULL UNIQUE,
+  v  VARCHAR(30) NOT NULL
+);
+INSERT INTO settings (k, v) VALUES ('theme', 'light'), ('lang', 'bn');
+
+REPLACE INTO settings (k, v) VALUES ('theme', 'dark');
+SELECT * FROM settings ORDER BY id;
+```
+
+| id | k | v |
+| --- | --- | --- |
+| 2 | lang | bn |
+| 3 | theme | dark |
+
+মান ঠিকই বদলাল, কিন্তু খেয়াল করো: `theme`-এর `id` ১ থেকে **৩** হয়ে গেল! কারণ `REPLACE` আসলে "পুরোনো লাইন `DELETE`, তারপর নতুন `INSERT`" (`ROW_COUNT()` = ২)। অন্য টেবিল যদি Foreign Key দিয়ে `id` ১-কে দেখত, সে হয় আটকে যেত, নয়তো `ON DELETE CASCADE` থাকলে তার ডেটাও মুছে যেত।
+
+| উপায় | ডুপ্লিকেট এলে | `id` বদলায়? | কখন ব্যবহার |
+| --- | --- | --- | --- |
+| `INSERT` | পুরো কমান্ড error | – | ডুপ্লিকেট হওয়াই ভুল |
+| `INSERT IGNORE` | ডুপ্লিকেট বাদ, warning | না | "থাকলে থাক, শুধু নতুনগুলো দাও" |
+| `ON DUPLICATE KEY UPDATE` | আগের লাইন হালনাগাদ | না | হিসাব হালনাগাদ (Upsert) |
+| `REPLACE` | আগের লাইন মুছে নতুন | হ্যাঁ | খুব কম; Foreign Key থাকলে প্রায় কখনো না |
+
+<Remember>
+**ডুপ্লিকেট সামলাতে প্রায় সবসময় `ON DUPLICATE KEY UPDATE`।** `INSERT IGNORE` শুধু ডুপ্লিকেট না, ভুল Type বা `NULL`-এর মতো অন্য সমস্যাও চুপচাপ warning বানিয়ে ফেলে দিতে পারে; আর `REPLACE` পরিচয় (`id`) বদলে ফেলে। দুটোই ব্যবহার করো জেনেশুনে।
+</Remember>
+
+## UPDATE ... JOIN: অন্য টেবিল দেখে বদলাও
+
+ঢাকার ছাত্রদের বিজ্ঞানে ৫ নম্বর বোনাস (কিন্তু ১০০-র বেশি না)। শহর আছে `students`-এ, বিষয়ের নাম `subjects`-এ, নম্বর `marks`-এ:
+
+```sql
+UPDATE marks m
+JOIN students s   ON s.id = m.student_id
+JOIN subjects sub ON sub.id = m.subject_id
+SET m.score = LEAST(m.score + 5, 100)
+WHERE s.city = 'ঢাকা' AND sub.name = 'বিজ্ঞান';
+
+SELECT s.name, m.score
+FROM marks m JOIN students s ON s.id = m.student_id
+WHERE m.subject_id = 3 AND s.city = 'ঢাকা'
+ORDER BY s.id;
+```
+
+| name | score |
+| --- | --- |
+| রাফি | 95 |
+| তানভীর | 73 |
+| সাদিয়া | 99 |
+| ইমরান | 84 |
+
+`LEAST(a, b)` দুটোর ছোটটা দেয় (উল্টোটা `GREATEST`)। সাদিয়ার ৯৪ + ৫ = ৯৯; কেউ ৯৮ পেলে ১০৩ না হয়ে ১০০-তে থামত। লেখাটা MySQL-এর নিজস্ব; PostgreSQL-এ একই কাজ `UPDATE ... FROM` দিয়ে।
+
+## ERROR 1093: নিজের দিকে তাকিয়ে নিজেকে বদলানো
+
+গড়ের নিচে যাদের GPA, তাদের ০.১০ "উৎসাহ নম্বর" দিই:
+
+```sql
+UPDATE students SET gpa = gpa + 0.10
+WHERE gpa < (SELECT AVG(gpa) FROM students);
+```
+
+<ErrorBox title="ERROR 1093">
+You can't specify target table 'students' for update in FROM clause
+</ErrorBox>
+
+MySQL একই টেবিল একসাথে বদলাতে আর ভেতরের Subquery-তে পড়তে দেয় না। সমাধান: গড়টা আগে একটা Derived Table-এ হিসাব করে JOIN করো:
+
+```sql
+UPDATE students s
+JOIN (SELECT AVG(gpa) AS a FROM students) x ON s.gpa < x.a
+SET s.gpa = s.gpa + 0.10;
+```
+
+চারজন বদলাল (তানভীর, আরিফ, জুবায়ের, ইমরান)। ফারিহা না, কারণ `NULL < গড়` সত্যি না।
+
+## DELETE ... JOIN আর আর্কাইভ
+
+ক্লাস ১০ পাস করে বেরিয়ে যাবে। তাদের নম্বর মুছে ফেলার আগে একটা আর্কাইভ টেবিলে সরিয়ে রাখি:
+
+```sql
+CREATE TABLE marks_archive LIKE marks;
+
+INSERT INTO marks_archive
+SELECT * FROM marks
+WHERE student_id IN (SELECT id FROM students WHERE class = 10);
+
+DELETE m
+FROM marks m
+JOIN students s ON s.id = m.student_id
+WHERE s.class = 10;
+```
+
+ছয়টা নম্বর আর্কাইভে গেল, তারপর `marks` থেকে মুছল (২৬ থেকে ২০)। `DELETE m FROM ...`-এ `m` বলে দেয় কোন টেবিল থেকে মুছবে; JOIN করা `students`-এর কিছুই মোছে না।
+
+## টেবিল কপির দুই উপায়
+
+```sql
+-- ১. গঠন হুবহু (Index সহ), ডেটা ছাড়া
+CREATE TABLE students_copy LIKE students;
+INSERT INTO students_copy SELECT * FROM students;
+
+-- ২. একটা Query-র ফলাফল দিয়ে নতুন টেবিল
+CREATE TABLE class_stats AS
+SELECT class, COUNT(*) AS students, ROUND(AVG(gpa), 2) AS avg_gpa
+FROM students GROUP BY class;
+```
+
+| | `CREATE TABLE ... LIKE` | `CREATE TABLE ... AS SELECT` |
+| --- | --- | --- |
+| Column আর Type | হুবহু | Query থেকে অনুমান করে |
+| Primary Key, UNIQUE, Index | কপি হয় | **হয় না** |
+| Foreign Key | **হয় না** | হয় না |
+| ডেটা | না (আলাদা `INSERT ... SELECT` লাগে) | হ্যাঁ |
+
+আমরা `SHOW CREATE TABLE` দিয়ে মিলিয়ে দেখেছি: `marks_archive`-এ Primary Key আছে কিন্তু কোনো Foreign Key নেই, আর `class_stats`-এ কোনো Key-ই নেই। Backup বা রিপোর্টের জন্য ঠিক আছে, কিন্তু পরে দরকারি Constraint নিজে যোগ করতে হবে।
+
+<BugMonster title="লেখার উন্নত ফাঁদ">
+
+**১. `INSERT ... SELECT`-এ Column-এর ক্রম গুলিয়ে ফেলা।** `INSERT INTO t (name, id) SELECT id, name ...` লিখলে Type মিললে কোনো error ছাড়াই নাম আর `id` অদলবদল হয়ে যায়। দুই তালিকা পাশাপাশি লিখে মেলাও।
+
+**২. `UPDATE ... JOIN`-এ ডুপ্লিকেট মিল।** JOIN-এ একটা Row দুবার মিললে MySQL সেটা একবারই বদলায়, কিন্তু কোন মানটা নেবে তার নিশ্চয়তা নেই। JOIN যেন এক-এক মিলে, সেটা আগে `SELECT` দিয়ে দেখে নাও।
+
+**৩. `REPLACE` আর Foreign Key।** ওপরের টেবিল দেখো; বেশির ভাগ ক্ষেত্রে `ON DUPLICATE KEY UPDATE`।
+
+**৪. `ERROR 1093`।** Derived Table বা JOIN দিয়ে ঘুরিয়ে লেখো।
+
+</BugMonster>
+
+<Quest id="1" title="ক্লাসভিত্তিক সম্মান তালিকা">
+`honor_roll`-এ আরেকটা Column যোগ করো `class TINYINT`, তারপর এক `UPDATE ... JOIN` দিয়ে প্রত্যেকের ক্লাস `students` থেকে বসাও।
+
+<Solution>
+```sql
+ALTER TABLE honor_roll ADD class TINYINT;
+
+UPDATE honor_roll h
+JOIN students s ON s.id = h.student_id
+SET h.class = s.class;
+```
+</Solution>
+</Quest>
+
+<Quest id="2" title="পরিচয় বদলানো ছাড়া হালনাগাদ">
+`settings` টেবিলে `lang`-এর মান `en` করো এমনভাবে, যাতে লাইনটা না থাকলে ঢোকে, থাকলে `id` না বদলে শুধু মান বদলায়।
+
+<Solution>
+```sql
+INSERT INTO settings (k, v) VALUES ('lang', 'en') AS new
+ON DUPLICATE KEY UPDATE v = new.v;
+```
+
+`k` Column `UNIQUE`, তাই `lang` থাকায় এটা Upsert হয়ে আগের লাইনটাই হালনাগাদ করে। (MariaDB-তে `AS new` বাদ দিয়ে `v = VALUES(v)`।)
+</Solution>
+</Quest>
+
+<Quest id="3" title="শিক্ষকহীন বিষয়ের নম্বর সরাও">
+এমন বিষয়ের নম্বরগুলো `marks` থেকে মুছে দাও, যে বিষয়ের কোনো শিক্ষক নেই। (আমাদের ডেটায় ইংরেজির কোনো নম্বর নেই, তাই কিছুই মুছবে না; তবু Query-টা লেখো।)
+
+<Solution>
+```sql
+DELETE m
+FROM marks m
+JOIN subjects sub ON sub.id = m.subject_id
+WHERE sub.teacher_id IS NULL;
+```
+</Solution>
+</Quest>
+
+<Boss title="রাতের হিসাব-মেলানো">
+প্রতি রাতে একটা কাজ চলবে, যা `student_totals_t` টেবিলকে `marks`-এর সাথে মিলিয়ে রাখবে:
+
+1. নতুন ছাত্রের নম্বর এলে লাইন যোগ হবে, পুরোনোদের মোট হালনাগাদ হবে (Upsert)।
+2. কারো সব নম্বর মুছে গেলে (যেমন ক্লাস ১০ চলে গেল), তার লাইনও `student_totals_t` থেকে মুছবে।
+3. পুরোটা যেন হয় সব-নয়-কিছুই-না।
+
+<Solution>
+```sql
+START TRANSACTION;
+
+  INSERT INTO student_totals_t (student_id, total, exams)
+  SELECT * FROM (
+    SELECT student_id, SUM(score) AS total, COUNT(*) AS exams
+    FROM marks GROUP BY student_id
+  ) AS new
+  ON DUPLICATE KEY UPDATE total = new.total, exams = new.exams;
+
+  DELETE t
+  FROM student_totals_t t
+  LEFT JOIN marks m ON m.student_id = t.student_id
+  WHERE m.student_id IS NULL;
+
+COMMIT;
+```
+
+দ্বিতীয় অংশটা লেভেল ১১-এর Anti Join, এবার `DELETE`-এর সাথে। আর পুরোটা লেভেল ১৮-এর Transaction-এ মোড়ানো, যাতে মাঝপথে কিছু ভাঙলে রিপোর্ট অর্ধেক-হালনাগাদ অবস্থায় না থাকে (অ্যাপের কোডে error হলে `ROLLBACK`)।
+</Solution>
+</Boss>
+
+<Summary slug="level-4-1" />
+
+<Checkpoint questions={[
+  { q: "INSERT ... SELECT-এ কোন নিয়মটা জরুরি?", options: ["SELECT-এ শুধু একটা Column থাকতে পারে", "SELECT-এর Column সংখ্যা আর ক্রম INSERT-এর তালিকার সাথে মিলতে হবে", "দুই টেবিলের নাম এক হতে হবে", "WHERE দেওয়া যায় না"], answer: 1, why: "মান বসে ক্রম অনুযায়ী, নাম অনুযায়ী না।" },
+  { q: "Upsert-এ একটা আগের লাইন বদলালে ROW_COUNT() কত গোনে?", options: ["0", "1", "2", "3"], answer: 2, why: "নতুন = ১, বদলানো = ২, অপরিবর্তিত = ০।" },
+  { q: "REPLACE INTO-এর ঝুঁকি কী?", options: ["ধীর", "পুরোনো লাইন মুছে নতুন ঢোকায়, তাই AUTO_INCREMENT id বদলে যায়", "শুধু MariaDB-তে চলে", "ডুপ্লিকেট আটকায় না"], answer: 1, why: "DELETE + INSERT, তাই Foreign Key-র Child আটকাতে বা CASCADE-এ মুছে যেতে পারে।" },
+  { q: "UPDATE students ... WHERE gpa < (SELECT AVG(gpa) FROM students) কী দেয়?", options: ["ঠিকঠাক চলে", "ERROR 1093", "সব Row বদলায়", "কিছুই বদলায় না"], answer: 1, why: "একই টেবিল বদলানো আর Subquery-তে পড়া একসাথে চলে না; Derived Table দিয়ে JOIN করো।" },
+  { q: "CREATE TABLE copy AS SELECT * FROM students কী কপি করে না?", options: ["ডেটা", "Column", "Primary Key আর Index", "Data Type"], answer: 2, why: "AS SELECT শুধু Column আর ডেটা আনে; Key আর Index নিজে যোগ করতে হয়।" }
+]} />

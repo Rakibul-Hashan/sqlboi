@@ -1,0 +1,291 @@
+<Mission>
+- কেন ডেটা একটা টেবিলে না রেখে কয়েকটায় ভাগ করি (**Relationship**-এর ধারণা)
+- `INNER JOIN` দিয়ে দুই বা তার বেশি টেবিল জোড়া লাগানো
+- টেবিলের **Alias** (`s`, `m`) দিয়ে Query ছোট রাখা
+- JOIN-এর সাথে `WHERE`, `GROUP BY`, `ORDER BY` মেলানো
+</Mission>
+
+<Note title="শুরুর আগে">
+লেভেল ৯-এর জোন ২-এর খাতা লাগবে ([school-zone2.sql](/sql/school-zone2.sql))। ডেটা বদলে গিয়ে থাকলে আবার চালিয়ে নাও।
+</Note>
+
+## কেন একটা বিশাল টেবিল না?
+
+ধরো সব তথ্য একটা টেবিলেই রাখলাম:
+
+| ছাত্র | শহর | বিষয় | শিক্ষক | শিক্ষকের ফোন | নম্বর |
+| --- | --- | --- | --- | --- | --- |
+| রাফি | ঢাকা | গণিত | হাসান স্যার | 01700000101 | 85 |
+| রাফি | ঢাকা | বাংলা | রুমানা ম্যাডাম | 01700000102 | 78 |
+| নুসরাত | চট্টগ্রাম | গণিত | হাসান স্যার | 01700000101 | 98 |
+| ... | ... | ... | ... | ... | ... |
+
+সমস্যাগুলো দেখো:
+
+- হাসান স্যারের ফোন নম্বর প্রতিটা গণিতের লাইনে আবার লেখা। নম্বর বদলালে শত শত লাইন বদলাতে হবে, একটা বাদ পড়লেই ডেটা দুই রকম হয়ে যাবে।
+- নতুন একজন শিক্ষক এলেন, কিন্তু এখনো কোনো বিষয় পাননি। তাঁকে কোথায় রাখব? এই টেবিলে "নম্বর" ছাড়া লাইন হয় না।
+- রাফির শহর বদলালে তার প্রতিটা বিষয়ের লাইনে বদলাতে হবে।
+
+সমাধান: প্রতিটা "জিনিস" নিজের টেবিলে, আর টেবিলগুলো **id** দিয়ে একে অন্যকে চিনবে। ঠিক যেমনটা আমরা লেভেল ৯-এ করেছি:
+
+```text
+students (id, name, city ...)        teachers (id, name, phone ...)
+      ▲                                     ▲
+      │ student_id                          │ teacher_id
+marks (student_id, subject_id, score) ──▶ subjects (id, name, teacher_id)
+                         subject_id
+```
+
+একটা তথ্য এক জায়গাতেই থাকে। এই নীতির পূর্ণ তত্ত্ব (Normalization) আসবে লেভেল ১৫-তে। আজকের প্রশ্ন: ভাগ করা টেবিল থেকে আবার একসাথে দেখব কীভাবে? উত্তর: **JOIN**।
+
+## প্রথম JOIN
+
+`marks` টেবিলে শুধু নম্বর আর `student_id`। ছাত্রের নাম আছে `students`-এ। দুটো জোড়া দিই:
+
+```sql
+SELECT students.name, marks.subject_id, marks.score
+FROM students
+INNER JOIN marks ON students.id = marks.student_id
+WHERE students.id IN (1, 2);
+```
+
+| name | subject_id | score |
+| --- | --- | --- |
+| রাফি | 1 | 85 |
+| রাফি | 2 | 78 |
+| রাফি | 3 | 90 |
+| নুসরাত | 1 | 98 |
+| নুসরাত | 2 | 92 |
+| নুসরাত | 3 | 95 |
+
+পড়ার উপায়: "`students` নাও, প্রতিটা ছাত্রের পাশে `marks`-এর সেই লাইনগুলো বসাও যেখানে `students.id` আর `marks.student_id` সমান।"
+
+- `ON` বলে দেয় কোন Column দিয়ে মেলাতে হবে। সাধারণত একপাশে Primary Key, অন্যপাশে Foreign Key।
+- `students.name` মানে "`students` টেবিলের `name`"। দুই টেবিলে একই নামের Column থাকলে এভাবে বলে দিতেই হয়।
+- `INNER JOIN` শুধু সেই Row-গুলো দেখায় যাদের **দুই পাশেই মিল আছে**। (শুধু `JOIN` লিখলেও সেটা `INNER JOIN`।)
+
+<Analogy>
+বিয়ের অনুষ্ঠানে দুটো তালিকা: অতিথিদের নাম, আর টেবিল নম্বর অনুযায়ী আসন। `INNER JOIN` হলো এমন একজন স্বেচ্ছাসেবক, যে শুধু তাদের বসায় যাদের নাম দুই তালিকাতেই আছে। যার আসন নেই, বা যে আসনে কেউ নেই, তারা এই তালিকায় আসবে না। (তাদের খোঁজ পরের লেভেলের `LEFT JOIN`-এ।)
+</Analogy>
+
+## Alias দিয়ে ছোট করো, তিনটা টেবিল জোড়ো
+
+`subject_id` 1, 2, 3 দেখে কেউ কিছু বুঝবে না। বিষয়ের নামও আনি, মানে তিনটা টেবিল:
+
+```sql
+SELECT s.name AS student, sub.name AS subject, m.score
+FROM marks m
+JOIN students s   ON s.id = m.student_id
+JOIN subjects sub ON sub.id = m.subject_id
+WHERE s.class = 8
+ORDER BY s.name, sub.name;
+```
+
+| student | subject | score |
+| --- | --- | --- |
+| তানভীর | গণিত | 70 |
+| তানভীর | বাংলা | 75 |
+| তানভীর | বিজ্ঞান | 68 |
+| নুসরাত | গণিত | 98 |
+| নুসরাত | বাংলা | 92 |
+| নুসরাত | বিজ্ঞান | 95 |
+| রাফি | গণিত | 85 |
+| রাফি | বাংলা | 78 |
+| রাফি | বিজ্ঞান | 90 |
+| লামিয়া | গণিত | 95 |
+| লামিয়া | বাংলা | 97 |
+
+- `FROM marks m` মানে এই Query-তে `marks`-কে ডাকব `m` নামে। (`AS` লেখা ঐচ্ছিক।)
+- প্রতিটা নতুন টেবিলের জন্য একটা করে `JOIN ... ON ...`। চারটা টেবিল মানে তিনটা `JOIN`।
+- লামিয়ার বিজ্ঞান নেই, কারণ `marks`-এ সেই লাইনই নেই।
+
+শিক্ষকসহ বিষয়ের তালিকা:
+
+```sql
+SELECT sub.name AS subject, t.name AS teacher
+FROM subjects sub
+JOIN teachers t ON t.id = sub.teacher_id;
+```
+
+| subject | teacher |
+| --- | --- |
+| গণিত | হাসান স্যার |
+| বাংলা | রুমানা ম্যাডাম |
+| বিজ্ঞান | কামাল স্যার |
+
+ইংরেজি নেই (তার `teacher_id` `NULL`, মেলার কিছু নেই), আর শারমিন ম্যাডামও নেই (তাঁর কোনো বিষয় নেই)। `INNER JOIN` দুই পাশের "একা"-দের বাদ দেয়।
+
+## JOIN + GROUP BY: আসল রিপোর্ট
+
+মোট নম্বরে সেরা ৩:
+
+```sql
+SELECT s.name, SUM(m.score) AS total, ROUND(AVG(m.score), 1) AS avg
+FROM students s
+JOIN marks m ON m.student_id = s.id
+GROUP BY s.id, s.name
+ORDER BY total DESC
+LIMIT 3;
+```
+
+| name | total | avg |
+| --- | --- | --- |
+| নুসরাত | 285 | 95.0 |
+| সাদিয়া | 274 | 91.3 |
+| রাফি | 253 | 84.3 |
+
+`GROUP BY s.id, s.name` কেন, শুধু `s.name` না? দুইজন "রাফি" থাকলে নাম দিয়ে দল বানালে তাদের নম্বর মিশে যেত। `id` দিয়ে দল বানানোই নিরাপদ।
+
+বিষয়ভিত্তিক বিশ্লেষণ:
+
+```sql
+SELECT sub.name AS subject, COUNT(*) AS n, MAX(m.score) AS top, ROUND(AVG(m.score), 1) AS avg
+FROM subjects sub
+JOIN marks m ON m.subject_id = sub.id
+GROUP BY sub.id, sub.name
+ORDER BY avg DESC;
+```
+
+| subject | n | top | avg |
+| --- | --- | --- | --- |
+| গণিত | 9 | 98 | 80.9 |
+| বাংলা | 9 | 97 | 80.0 |
+| বিজ্ঞান | 8 | 95 | 78.3 |
+
+## চার টেবিল একসাথে
+
+কোন শিক্ষকের কোন ছাত্র ৯০ বা বেশি পেয়েছে?
+
+```sql
+SELECT t.name AS teacher, s.name AS student, m.score
+FROM teachers t
+JOIN subjects sub ON sub.teacher_id = t.id
+JOIN marks m      ON m.subject_id = sub.id
+JOIN students s   ON s.id = m.student_id
+WHERE m.score >= 90
+ORDER BY m.score DESC, s.name, t.name;
+```
+
+| teacher | student | score |
+| --- | --- | --- |
+| হাসান স্যার | নুসরাত | 98 |
+| রুমানা ম্যাডাম | লামিয়া | 97 |
+| কামাল স্যার | নুসরাত | 95 |
+| হাসান স্যার | লামিয়া | 95 |
+| কামাল স্যার | সাদিয়া | 94 |
+| রুমানা ম্যাডাম | নুসরাত | 92 |
+| হাসান স্যার | সাদিয়া | 92 |
+| কামাল স্যার | রাফি | 90 |
+
+টেবিলগুলো একটা শিকলের মতো: `teachers` → `subjects` → `marks` → `students`। প্রতিটা `ON` পাশের দুটো আংটা জোড়ে।
+
+<Remember>
+**JOIN-এর `ON`-এ ভুল বা না থাকা মানে ভয়ংকর বড় ফলাফল।** `ON` ছাড়া জোড়া দিলে MySQL প্রতিটা Row-কে অন্য টেবিলের প্রতিটা Row-এর সাথে জোড়ে, একে বলে **Cartesian Product** বা `CROSS JOIN`। ১০ জন ছাত্র × ২৬টা নম্বর = ২৬০টা অর্থহীন লাইন। লাখো Row-এর টেবিলে এটা সার্ভারকে বসিয়ে দিতে পারে।
+
+```sql
+SELECT COUNT(*) FROM students, marks;   -- 260 !
+```
+</Remember>
+
+<BugMonster title="জোড়া দিতে গিয়ে">
+
+**১. `ERROR 1052: Column 'name' in field list is ambiguous`।** `students`, `subjects`, `teachers` সবারই `name` আছে। কোনটা চাও, বলে দাও: `s.name`, `sub.name`।
+
+**২. ভুল Column দিয়ে মেলানো।** `ON s.id = m.subject_id` লিখলে MySQL কোনো error দেবে না, কারণ দুটোই সংখ্যা! কিন্তু ছাত্র ১-এর পাশে বসবে বিষয় ১-এর নম্বর। ফলাফল দেখতে "ঠিক" লাগে বলে এটা সবচেয়ে বিপজ্জনক বাগ। নিয়ম: **Foreign Key = যে টেবিলের দিকে তাকায় তার Primary Key।** `m.student_id` মিলবে `s.id`-র সাথে।
+
+**৩. JOIN-এর পর সংখ্যা ফুলে যাওয়া।** ছাত্রদের সাথে নম্বর জোড়ার পর `COUNT(*)` দিয়ে ছাত্র গুনলে ২৬ আসবে, ১০ না, কারণ প্রতিটা ছাত্র তিনবার এসেছে। ছাত্র গুনতে `COUNT(DISTINCT s.id)`।
+
+**৪. Alias দেওয়ার পর আসল নাম।** `FROM students s` লিখলে Query-র বাকি সব জায়গায় `s` লিখতে হবে; `students.name` তখন error দেবে।
+
+</BugMonster>
+
+<Quest id="1" title="ঢাকার গণিতবিদ">
+ঢাকার ছাত্রদের গণিতের নম্বর, বেশি থেকে কম।
+
+<Solution>
+```sql
+SELECT s.name, m.score
+FROM students s
+JOIN marks m      ON m.student_id = s.id
+JOIN subjects sub ON sub.id = m.subject_id
+WHERE sub.name = 'গণিত' AND s.city = 'ঢাকা'
+ORDER BY m.score DESC;
+```
+
+সাদিয়া 92, রাফি 85, ইমরান 80, তানভীর 70।
+</Solution>
+</Quest>
+
+<Quest id="2" title="শিক্ষকের ছাত্রসংখ্যা">
+প্রতিটা শিক্ষক কয়জন ছাত্রের খাতা দেখেছেন, আর তাঁদের বিষয়ে গড় নম্বর কত?
+
+<Solution>
+```sql
+SELECT t.name AS teacher, sub.name AS subject,
+       COUNT(*) AS students, ROUND(AVG(m.score), 1) AS avg
+FROM teachers t
+JOIN subjects sub ON sub.teacher_id = t.id
+JOIN marks m      ON m.subject_id = sub.id
+GROUP BY t.id, t.name, sub.id, sub.name;
+```
+</Solution>
+</Quest>
+
+<Quest id="3" title="ফেলের খাতা">
+যেকোনো বিষয়ে ৬০-এর কম পেয়েছে এমন ছাত্রের নাম, ক্লাস, বিষয় আর নম্বর।
+
+<Solution>
+```sql
+SELECT s.name, s.class, sub.name AS subject, m.score
+FROM marks m
+JOIN students s   ON s.id = m.student_id
+JOIN subjects sub ON sub.id = m.subject_id
+WHERE m.score < 60;
+```
+
+আরিফ: গণিত 55, বিজ্ঞান 48।
+</Solution>
+</Quest>
+
+<Boss title="ক্লাসভিত্তিক মেধাতালিকা">
+প্রতিটা ক্লাসের জন্য: কতজন ছাত্রের নম্বর আছে, ক্লাসের মোট গড় নম্বর, আর ক্লাসের সর্বোচ্চ একক নম্বর (যেকোনো বিষয়ে)। শুধু সেই ক্লাসগুলো, যেখানে গড় ৭৫-এর বেশি। ক্লাস অনুযায়ী সাজাও।
+
+<Solution title="ইঙ্গিত ১">
+`students` আর `marks` জোড়া লাগাও, তারপর `GROUP BY s.class`।
+</Solution>
+
+<Solution title="ইঙ্গিত ২">
+এক ছাত্রের তিনটা নম্বর মানে JOIN-এর পরে তার তিনটা Row; তাই ছাত্র গুনতে `COUNT(DISTINCT s.id)`। আর "গড় ৭৫-এর বেশি" দলের শর্ত, তাই `HAVING`।
+</Solution>
+
+<Solution>
+```sql
+SELECT s.class,
+       COUNT(DISTINCT s.id) AS students,
+       ROUND(AVG(m.score), 1) AS avg_score,
+       MAX(m.score) AS best_score
+FROM students s
+JOIN marks m ON m.student_id = s.id
+GROUP BY s.class
+HAVING AVG(m.score) > 75
+ORDER BY s.class;
+```
+
+| class | students | avg_score | best_score |
+| --- | --- | --- | --- |
+| 8 | 4 | 85.7 | 98 |
+| 9 | 3 | 76.6 | 94 |
+
+ক্লাস ১০ বাদ পড়েছে, তার গড় 73.7। `HAVING` লাইনটা সরিয়ে চালালে দেখবে, সেখানে ছাত্র মাত্র ২ জন, কারণ ফারিহার কোনো নম্বর নেই, আর `INNER JOIN` তাকে বাদ দিয়েছে। "কারা বাদ পড়ল" খুঁজে বের করা, সেটাই পরের লেভেল।
+</Solution>
+</Boss>
+
+<Summary slug="level-10" />
+
+<Checkpoint questions={[
+  { q: "INNER JOIN কোন Row-গুলো দেখায়?", options: ["বাঁ টেবিলের সব", "ডান টেবিলের সব", "যেগুলোর দুই পাশেই মিল আছে", "সব টেবিলের সব"], answer: 2, why: "INNER JOIN শুধু মিল থাকা জোড়াগুলো রাখে।" },
+  { q: "ডেটা কয়েকটা টেবিলে ভাগ করার মূল কারণ কী?", options: ["দেখতে সুন্দর", "একই তথ্য বারবার না লিখে এক জায়গায় রাখা", "MySQL-এর নিয়ম", "JOIN শেখার জন্য"], answer: 1, why: "পুনরাবৃত্তি কমলে আপডেটে গরমিলের সুযোগও কমে।" },
+  { q: "'Column name is ambiguous' error কেন আসে?", options: ["Column-এর নাম ভুল", "একাধিক টেবিলে একই নামের Column, কোনটা চাও বলা হয়নি", "টেবিল নেই", "JOIN নিষেধ"], answer: 1, why: "s.name বা sub.name লিখে টেবিল বলে দাও।" },
+  { q: "ON ছাড়া দুই টেবিল জোড়া দিলে (১০ × ২৬ Row) কয়টা Row আসবে?", options: ["10", "26", "36", "260"], answer: 3, why: "Cartesian Product: প্রতিটা Row × প্রতিটা Row।" },
+  { q: "marks.student_id কোনটার সাথে মিলবে?", options: ["marks.subject_id", "students.id", "subjects.id", "students.roll"], answer: 1, why: "Foreign Key সবসময় যে টেবিলের দিকে তাকায় তার Primary Key-র সাথে মেলে।" }
+]} />

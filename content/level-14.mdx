@@ -1,0 +1,286 @@
+<Mission>
+- **ER Model**: Entity, Attribute, Relationship দিয়ে একটা সিস্টেমকে কাগজে আঁকা
+- Attribute-এর ধরন: Simple, Composite, Multi-valued, Derived, Key
+- **Cardinality**: ১:১, ১:N, M:N, আর Participation (সম্পূর্ণ বনাম আংশিক)
+- Weak Entity
+- ER Diagram থেকে MySQL টেবিল বানানোর নিয়ম (Mapping)
+</Mission>
+
+<Story>
+বাড়ি বানানোর আগে স্থপতি নকশা আঁকেন; ইট-সিমেন্ট আসে পরে। Database-এর নকশার নাম **ER Diagram** (Entity-Relationship)। ১৯৭৬ সালে Peter Chen এই পদ্ধতি প্রস্তাব করেন। এর সুবিধা: যে মানুষটা SQL জানে না (হেডস্যার, ক্লায়েন্ট), সেও ছবি দেখে বলতে পারে "না, একজন ছাত্রের তো দুইজন অভিভাবক থাকতে পারে!" ভুলটা টেবিল বানানোর আগেই ধরা পড়ে, যখন ঠিক করা সবচেয়ে সস্তা।
+</Story>
+
+## তিনটা মূল উপাদান
+
+| উপাদান | কী | আমাদের স্কুলে | ছবিতে |
+| --- | --- | --- | --- |
+| **Entity** | যে "জিনিস" নিয়ে তথ্য রাখি | Student, Subject, Teacher | আয়তক্ষেত্র |
+| **Attribute** | Entity-র বৈশিষ্ট্য | name, phone, salary | ডিম্বাকৃতি |
+| **Relationship** | Entity-দের মধ্যে সম্পর্ক | Student *Takes* Subject | রম্বস |
+
+একটা সহজ কৌশল: সিস্টেমের বর্ণনায় **বিশেষ্য** (noun) প্রায়ই Entity, **ক্রিয়া** (verb) প্রায়ই Relationship। "শিক্ষক বিষয় **পড়ান**, ছাত্র বিষয় **নেয়** আর নম্বর **পায়**।"
+
+<ERDiagram />
+
+## Attribute-এর ধরন
+
+| ধরন | মানে | উদাহরণ | ছবিতে |
+| --- | --- | --- | --- |
+| **Simple** | আর ভাঙা যায় না | `salary` | সাধারণ ডিম্বাকৃতি |
+| **Composite** | ছোট অংশে ভাঙা যায় | ঠিকানা = বাড়ি + রাস্তা + শহর | ডিম্বাকৃতি থেকে আরও ডিম্বাকৃতি |
+| **Multi-valued** | একাধিক মান থাকতে পারে | একজনের কয়েকটা `phone` | দুই দাগের ডিম্বাকৃতি |
+| **Derived** | অন্য Attribute থেকে হিসাব করা যায় | `age` (জন্মতারিখ থেকে) | ড্যাশ দেওয়া ডিম্বাকৃতি |
+| **Key** | Entity-কে অনন্যভাবে চেনায় | `id` | নামের নিচে দাগ |
+
+লেভেল ৬-এ বয়স কেন টেবিলে রাখিনি, মনে আছে? সেটা ছিল Derived Attribute।
+
+## Cardinality: কয়টার সাথে কয়টা
+
+| ধরন | মানে | উদাহরণ |
+| --- | --- | --- |
+| **১:১** (One-to-One) | একটার সাথে সর্বোচ্চ একটা | একজন ছাত্র ↔ একটা পরিচয়পত্র |
+| **১:N** (One-to-Many) | একটার সাথে অনেকগুলো, কিন্তু উল্টো দিকে একটা | একজন শিক্ষক → অনেক বিষয়; প্রতিটা বিষয়ের একজন শিক্ষক |
+| **M:N** (Many-to-Many) | দুই দিকেই অনেক | ছাত্র অনেক বিষয় নেয়, প্রতিটা বিষয় অনেক ছাত্র নেয় |
+
+ঠিক করার উপায়: **দুই দিক থেকে আলাদা করে একটা প্রশ্ন করো।**
+
+- "একজন শিক্ষক কয়টা বিষয় পড়াতে পারেন?" → অনেক (N)
+- "একটা বিষয় কয়জন শিক্ষক পড়ান?" → একজন (1)
+- তাই Teacher : Subject = **১:N**
+
+### Participation: সবাইকে কি থাকতেই হবে?
+
+- **Total (সম্পূর্ণ)**: প্রতিটা Entity-কে সম্পর্কে থাকতেই হবে। প্রতিটা ছাত্রকে অন্তত একটা বিষয় নিতেই হবে। ছবিতে **দুই সমান্তরাল রেখা**।
+- **Partial (আংশিক)**: থাকতেও পারে, না-ও পারে। প্রত্যেক শিক্ষকের বিষয় থাকবেই, এমন না (শারমিন ম্যাডামের মনে আছে?)। ছবিতে **এক রেখা**।
+
+### Relationship-এরও Attribute থাকে
+
+`score` কার বৈশিষ্ট্য? ছাত্রের না (রাফির একটা নম্বর না, তিনটা), বিষয়ের না (গণিতের একটা নম্বর না)। এটা "রাফি **গণিত নিয়েছে**" এই সম্পর্কের বৈশিষ্ট্য। তাই ছবিতে `score` ঝুলছে *Takes* রম্বস থেকে। আর এজন্যই `marks` টেবিলে `score` থাকে।
+
+## Weak Entity
+
+কিছু Entity নিজে নিজে চেনা যায় না, অন্য একটা Entity-র ওপর নির্ভর করে। অভিভাবক (Guardian): "আব্বু" নামে হাজারজন আছেন; কিন্তু "রাফির আব্বু" একজনই। Guardian হলো **Weak Entity**, Student তার **Owner**। ছবিতে দুই দাগের আয়তক্ষেত্র। এর Key হয় Owner-এর Key + নিজের আংশিক Key (**Partial Key**, যেমন `relation`: বাবা/মা)। Owner মুছে গেলে Weak Entity-রও অর্থ থাকে না।
+
+## ER থেকে টেবিল: Mapping-এর নিয়ম
+
+এটাই আসল দক্ষতা। প্রতিটা নিয়ম একটা করে SQL দিয়ে দেখি (জোন ২-এর `school` খাতায় চালাতে পারো)।
+
+### নিয়ম ১: প্রতিটা সাধারণ Entity → একটা টেবিল
+
+Key Attribute → `PRIMARY KEY`, Simple Attribute → Column, Composite → আলাদা আলাদা Column (`house`, `road`, `city`), Derived → কোনো Column না।
+
+### নিয়ম ২: ১:N → "N" দিকের টেবিলে Foreign Key
+
+একজন শিক্ষকের অনেক বিষয়, তাই `subjects`-এ `teacher_id`। উল্টো করে `teachers`-এ `subject_id` রাখলে একজন শিক্ষকের একটাই বিষয় রাখা যেত।
+
+<Remember>
+**১:N সম্পর্কে Foreign Key সবসময় "অনেক" (N) দিকের টেবিলে যায়।** "এক" দিকের টেবিলে রাখলে একটা ঘরে অনেকগুলো মান লাগত, যা Atomic নিয়ম ভাঙে।
+</Remember>
+
+### নিয়ম ৩: M:N → নতুন একটা Junction টেবিল
+
+ছাত্র আর বিষয়ের মাঝে `marks`। দুই পাশের Primary Key এখানে Foreign Key হয়ে আসে, দুটো মিলে Composite Primary Key, আর Relationship-এর Attribute (`score`) এখানেই বসে। M:N সম্পর্ককে সরাসরি দুই টেবিলে Foreign Key দিয়ে রাখা **অসম্ভব**; Junction টেবিল লাগবেই। (এর আরেক নাম Bridge বা Associative টেবিল।)
+
+### নিয়ম ৪: ১:১ → যেকোনো এক দিকে Foreign Key + UNIQUE
+
+```sql
+CREATE TABLE id_cards (
+  student_id  INT PRIMARY KEY,                 -- Primary Key হওয়ায় নিজে থেকেই UNIQUE
+  card_no     VARCHAR(20) NOT NULL UNIQUE,
+  issued_on   DATE NOT NULL,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+```
+
+`student_id` এখানে Primary Key **এবং** Foreign Key দুটোই, তাই একজন ছাত্রের দুটো কার্ড হতে পারে না। Foreign Key রাখো সেই দিকে যেখানে Participation সম্পূর্ণ (প্রতিটা কার্ডের একজন ছাত্র থাকতেই হবে, কিন্তু প্রতিটা ছাত্রের কার্ড না-ও থাকতে পারে), তাহলে `NULL` লাগবে না।
+
+### নিয়ম ৫: Multi-valued Attribute → আলাদা টেবিল
+
+```sql
+CREATE TABLE student_phones (
+  student_id INT NOT NULL,
+  phone      VARCHAR(15) NOT NULL,
+  label      ENUM('নিজের', 'বাবা', 'মা', 'অন্যান্য') NOT NULL DEFAULT 'নিজের',
+  PRIMARY KEY (student_id, phone),
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+```
+
+`phone1`, `phone2`, `phone3` Column বানানো ভুল: তিনটার বেশি হলে? খোঁজার সময় তিনটা Column-এ খুঁজতে হবে? প্রতিটা নম্বর একটা Row।
+
+### নিয়ম ৬: Weak Entity → Owner-এর Key + Partial Key = Primary Key
+
+```sql
+CREATE TABLE guardians (
+  student_id INT NOT NULL,
+  relation   ENUM('বাবা', 'মা', 'অভিভাবক') NOT NULL,   -- Partial Key
+  name       VARCHAR(100) NOT NULL,
+  phone      VARCHAR(15),
+  PRIMARY KEY (student_id, relation),
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+```
+
+`ON DELETE CASCADE` ঠিক Weak Entity-র সংজ্ঞাই প্রয়োগ করছে: Owner গেলে সেও যাবে।
+
+### সারাংশ
+
+| ER-এ | MySQL-এ |
+| --- | --- |
+| Strong Entity | টেবিল + Primary Key |
+| Weak Entity | টেবিল, PK = Owner-এর PK + Partial Key, `CASCADE` |
+| Composite Attribute | কয়েকটা Column |
+| Multi-valued Attribute | আলাদা টেবিল |
+| Derived Attribute | Column না; Query বা View-তে হিসাব |
+| ১:১ | এক দিকে FK + `UNIQUE` |
+| ১:N | N দিকে FK |
+| M:N | Junction টেবিল, Composite PK |
+| Relationship-এর Attribute | ১:N-এ N দিকের টেবিলে, M:N-এ Junction-এ |
+
+<Note title="অন্য নোটেশন: Crow's Foot">
+Chen-এর নোটেশন পরীক্ষায় বেশি আসে, কিন্তু অফিসে প্রায়ই দেখবে **Crow's Foot** নোটেশন: টেবিলগুলো বাক্স, আর রেখার মাথায় "কাকের পা" (তিন আঙুল) মানে "অনেক"। MySQL Workbench-এর **Reverse Engineer** ফিচার তোমার বানানো Database থেকে নিজেই এমন ডায়াগ্রাম এঁকে দেয়।
+</Note>
+
+<BugMonster title="নকশার ভুল">
+
+**১. M:N-কে ১:N ভাবা।** "একজন ছাত্র অনেক বিষয় নেয়" শুনে `subjects`-এ `student_id` রেখে দেওয়া। তখন গণিতে মাত্র একজন ছাত্র রাখা যাবে! দুই দিক থেকেই প্রশ্ন করো।
+
+**২. Relationship-এর Attribute ভুল জায়গায়।** `score`-কে `students`-এ রাখা। ভাবো, মানটা কোন **জোড়ার** ওপর নির্ভর করে।
+
+**৩. `phone1`, `phone2` Column।** Multi-valued Attribute; আলাদা টেবিল।
+
+**৪. Derived Attribute জমিয়ে রাখা।** `age`, `total_marks` টেবিলে রাখলে মূল ডেটা বদলালেই এগুলো ভুল হয়ে যায়। (বাস্তবে গতির জন্য কখনো কখনো ইচ্ছে করে রাখা হয়, তখন Trigger দিয়ে হালনাগাদ রাখতে হয়; লেভেল ১৭।)
+
+**৫. সবকিছুকে Entity বানানো।** "শহর" কি আলাদা Entity, না ছাত্রের একটা Attribute? যদি শহর নিয়ে আলাদা তথ্য (জনসংখ্যা, বিভাগ) রাখতে হয়, তাহলে Entity; শুধু নাম হলে Attribute।
+
+</BugMonster>
+
+<Quest id="1" title="Cardinality চেনো">
+প্রতিটা জোড়ার Cardinality লেখো: (ক) দেশ ↔ রাজধানী; (খ) মা ↔ সন্তান; (গ) লেখক ↔ বই; (ঘ) ডাক্তার ↔ রোগী (একটা হাসপাতালে)।
+
+<Solution>
+(ক) ১:১ · (খ) ১:N (একজন মায়ের অনেক সন্তান, প্রতিটা সন্তানের একজন জন্মদাত্রী মা) · (গ) M:N (একটা বইয়ের একাধিক লেখক থাকতে পারে) · (ঘ) M:N (একজন রোগী বিভিন্ন ডাক্তার দেখাতে পারে)।
+
+(গ)-তে অনেকেই ১:N বলে। লাইব্রেরি মিনি বসে আমরা সহজ রাখতে `books.author` একটা Column রেখেছিলাম, কিন্তু সত্যিকারের সিস্টেমে `authors` আর `book_authors` Junction টেবিল লাগবে।
+</Solution>
+</Quest>
+
+<Quest id="2" title="টেবিলগুলো বানাও">
+ওপরের `id_cards`, `student_phones` আর `guardians` টেবিল তিনটা জোন ২-এর `school` খাতায় বানাও। রাফির বাবা আর মায়ের তথ্য ঢোকাও, তারপর রাফির বাবার তথ্য আবার ঢোকানোর চেষ্টা করো। কী হলো?
+
+<Solution>
+```sql
+INSERT INTO guardians (student_id, relation, name, phone) VALUES
+  (1, 'বাবা', 'করিম উদ্দিন', '01799000001'),
+  (1, 'মা', 'রাশেদা বেগম', NULL);
+
+INSERT INTO guardians (student_id, relation, name) VALUES (1, 'বাবা', 'অন্য কেউ');
+-- ERROR 1062: Duplicate entry '1-বাবা' for key 'guardians.PRIMARY'
+```
+
+Partial Key `relation` আর Owner-এর `student_id` মিলে Primary Key, তাই একজন ছাত্রের একজনই "বাবা"।
+</Solution>
+</Quest>
+
+<Quest id="3" title="ভুল ধরো">
+একজন জুনিয়র এই ডিজাইন বানাল: `courses(id, name, teacher_name, teacher_phone, student_ids)`, যেখানে `student_ids`-এ লেখা `"1,4,7"`। অন্তত তিনটা ভুল বের করো।
+
+<Solution>
+১. `student_ids`-এ একাধিক মান এক ঘরে: Atomic নিয়ম ভঙ্গ, আর M:N সম্পর্ককে লুকিয়ে রাখা। Junction টেবিল লাগবে।
+২. শিক্ষকের তথ্য (`teacher_name`, `teacher_phone`) কোর্সের ভেতরে: শিক্ষক আলাদা Entity, `teachers` টেবিল আর `teacher_id` Foreign Key লাগবে। নাহলে একই শিক্ষকের ফোন অনেক জায়গায়, আর কোর্সহীন শিক্ষক রাখার জায়গাই নেই।
+৩. `student_ids`-এ Foreign Key দেওয়া যায় না, তাই ৯৯ নম্বর ছাত্র (যে নেই) লিখে দিলেও কেউ আটকাবে না।
+৪. "৪ নম্বর ছাত্র কোন কোন কোর্সে?" খুঁজতে `LIKE '%4%'` লাগবে, যেটা ১৪, ৪০ এর সাথেও মিলবে।
+</Solution>
+</Quest>
+
+<Boss title="হাসপাতালের নকশা">
+একটা ছোট ক্লিনিকের বর্ণনা: "ক্লিনিকে অনেক **ডাক্তার**, প্রত্যেকের নাম, BMDC রেজিস্ট্রেশন নম্বর আর একটা **বিভাগ** (একজন ডাক্তার একটা বিভাগেই, একটা বিভাগে অনেক ডাক্তার)। **রোগীর** নাম, জন্মতারিখ আর এক বা একাধিক ফোন নম্বর থাকে। রোগী ডাক্তারের **অ্যাপয়েন্টমেন্ট** নেয় নির্দিষ্ট তারিখ-সময়ে, প্রতিটা অ্যাপয়েন্টমেন্টে ফি আর একটা প্রেসক্রিপশন লেখা হয়। প্রতিটা প্রেসক্রিপশনে কয়েকটা ওষুধ থাকে, প্রতিটার ডোজ সহ।"
+
+কাজ: (১) Entity, Relationship আর Cardinality-র তালিকা বানাও; (২) MySQL টেবিলগুলো লেখো।
+
+<Solution title="ইঙ্গিত ১">
+বর্ণনার বিশেষ্যগুলো (ডাক্তার, বিভাগ, রোগী...) Entity-র প্রার্থী, ক্রিয়াগুলো Relationship। "একজন ডাক্তার একটা বিভাগেই" = ১:N, আর Foreign Key বসে N-এর দিকে।
+</Solution>
+
+<Solution title="ইঙ্গিত ২">
+রোগীর "একাধিক ফোন" একটা ঘরে রাখা যায় না: আলাদা টেবিল। প্রেসক্রিপশন আর ওষুধ M:N, আর ডোজটা কোনো একটার না, দুটোর সম্পর্কের; তাই Junction টেবিলে।
+</Solution>
+
+<Solution>
+**১. ER বিশ্লেষণ**
+
+- Entity: Department, Doctor, Patient, Appointment, Medicine
+- Department **১:N** Doctor (প্রত্যেক ডাক্তার একটা বিভাগে: Total participation)
+- Patient **M:N** Doctor, সম্পর্কটার নিজস্ব অনেক Attribute আছে (সময়, ফি, প্রেসক্রিপশন), তাই একে নিজেই একটা Entity বানানো ভালো: **Appointment** (Patient ১:N Appointment, Doctor ১:N Appointment)
+- Appointment **M:N** Medicine (একটা প্রেসক্রিপশনে অনেক ওষুধ, একটা ওষুধ অনেক প্রেসক্রিপশনে), Attribute `dose`
+- Patient-এর `phone`: Multi-valued, আর `age`: Derived (রাখব না)
+
+**২. টেবিল**
+
+```sql
+CREATE TABLE departments (
+  id   INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(80) NOT NULL UNIQUE
+);
+
+CREATE TABLE doctors (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  name          VARCHAR(100) NOT NULL,
+  bmdc_no       VARCHAR(20) NOT NULL UNIQUE,        -- Natural Key, Alternate Key হিসেবে
+  department_id INT NOT NULL,                       -- NOT NULL = Total participation
+  FOREIGN KEY (department_id) REFERENCES departments(id)
+);
+
+CREATE TABLE patients (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(100) NOT NULL,
+  birth_date DATE
+);
+
+CREATE TABLE patient_phones (
+  patient_id INT NOT NULL,
+  phone      VARCHAR(15) NOT NULL,
+  PRIMARY KEY (patient_id, phone),
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE
+);
+
+CREATE TABLE appointments (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id   INT NOT NULL,
+  doctor_id    INT NOT NULL,
+  scheduled_at DATETIME NOT NULL,
+  fee          DECIMAL(8,2) NOT NULL CHECK (fee >= 0),
+  notes        TEXT,                                -- প্রেসক্রিপশনের সাধারণ লেখা
+  UNIQUE (doctor_id, scheduled_at),                 -- একই সময়ে একজন ডাক্তারের দুই রোগী না
+  FOREIGN KEY (patient_id) REFERENCES patients(id),
+  FOREIGN KEY (doctor_id)  REFERENCES doctors(id)
+);
+
+CREATE TABLE medicines (
+  id   INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL UNIQUE
+);
+
+CREATE TABLE prescription_items (
+  appointment_id INT NOT NULL,
+  medicine_id    INT NOT NULL,
+  dose           VARCHAR(50) NOT NULL,              -- যেমন "১+০+১, খাবারের পরে"
+  PRIMARY KEY (appointment_id, medicine_id),
+  FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
+  FOREIGN KEY (medicine_id)    REFERENCES medicines(id)
+);
+```
+
+লক্ষ্য করো `UNIQUE (doctor_id, scheduled_at)`: একটা ব্যবসায়িক নিয়ম, যেটা ER Diagram-এ সহজে দেখানো যায় না, কিন্তু টেবিলে Constraint দিয়ে বসানো যায়। এই ডিজাইনটা পরের লেভেলে Normalization-এর চোখ দিয়ে আবার যাচাই করব।
+</Solution>
+</Boss>
+
+<Summary slug="level-14" />
+
+<Checkpoint questions={[
+  { q: "ER Diagram-এ রম্বস (diamond) কী বোঝায়?", options: ["Entity", "Attribute", "Relationship", "Key"], answer: 2, why: "Chen নোটেশনে আয়তক্ষেত্র = Entity, ডিম্বাকৃতি = Attribute, রম্বস = Relationship।" },
+  { q: "১:N সম্পর্কে Foreign Key কোথায় যায়?", options: ["১ দিকের টেবিলে", "N দিকের টেবিলে", "নতুন টেবিলে", "দুই দিকেই"], answer: 1, why: "প্রতিটা 'অনেক'-এর Row একটা 'এক'-কে দেখায়।" },
+  { q: "M:N সম্পর্ক MySQL-এ কীভাবে রাখবে?", options: ["এক দিকে Foreign Key", "কমা দিয়ে আলাদা করা id", "Junction টেবিল", "ENUM"], answer: 2, why: "দুই পাশের Key নিয়ে একটা আলাদা টেবিল, Composite Primary Key সহ।" },
+  { q: "'বয়স' কোন ধরনের Attribute?", options: ["Composite", "Multi-valued", "Derived", "Key"], answer: 2, why: "জন্মতারিখ থেকে হিসাব করে পাওয়া যায়।" },
+  { q: "Weak Entity-র Primary Key কী দিয়ে গঠিত?", options: ["শুধু নিজের Partial Key", "Owner-এর Primary Key + নিজের Partial Key", "AUTO_INCREMENT id", "কোনো Key থাকে না"], answer: 1, why: "নিজে একা চেনা যায় না, তাই Owner-এর পরিচয় লাগে।" }
+]} />

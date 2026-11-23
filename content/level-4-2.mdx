@@ -1,0 +1,330 @@
+<Mission>
+- **Window Function** কী, আর `GROUP BY`-এর সাথে এর মূল পার্থক্য
+- `OVER (PARTITION BY ... ORDER BY ...)`-এর তিনটা অংশ
+- র‍্যাঙ্কিং: `ROW_NUMBER`, `RANK`, `DENSE_RANK`, `NTILE`
+- চলমান যোগফল, চলমান গড় (Frame), `LAG`/`LEAD` দিয়ে আগের-পরের সাথে তুলনা
+- **Top-N per group**: প্রতিটা দলের সেরা N জন
+</Mission>
+
+<Note title="শুরুর আগে">
+জোন ২-এর খাতা ([school-zone2.sql](/sql/school-zone2.sql)) আবার চালাও। Window Function MySQL 8.0 আর MariaDB 10.2 থেকে আছে; পুরোনো সংস্করণে চলবে না।
+</Note>
+
+## সমস্যাটা কী ছিল
+
+লেভেল ৮-এ `GROUP BY` দিয়ে প্রতিটা ক্লাসের গড় পেয়েছিলাম, কিন্তু তখন প্রতিটা ক্লাস **একটা লাইনে মিশে** গিয়েছিল; ছাত্রদের নাম হারিয়ে গিয়েছিল। আর লেভেল ১২-এ "নিজের ক্লাসের গড়ের চেয়ে কে ভালো" জানতে Correlated Subquery লিখতে হয়েছিল।
+
+Window Function দুটো একসাথে দেয়: **প্রতিটা Row থাকে, আর পাশে বসে তার দলের হিসাব।**
+
+```sql
+SELECT name, class, gpa,
+       ROUND(AVG(gpa) OVER (PARTITION BY class), 2) AS class_avg
+FROM students
+WHERE gpa IS NOT NULL
+ORDER BY class, gpa DESC;
+```
+
+| name | class | gpa | class_avg |
+| --- | --- | --- | --- |
+| নুসরাত | 8 | 5.00 | 4.55 |
+| লামিয়া | 8 | 4.95 | 4.55 |
+| রাফি | 8 | 4.50 | 4.55 |
+| তানভীর | 8 | 3.75 | 4.55 |
+| সাদিয়া | 9 | 4.80 | 3.98 |
+| মীম | 9 | 4.25 | 3.98 |
+| আরিফ | 9 | 2.90 | 3.98 |
+| ইমরান | 10 | 4.00 | 3.75 |
+| জুবায়ের | 10 | 3.50 | 3.75 |
+
+৯ জনই আছে, আর প্রত্যেকের পাশে নিজের ক্লাসের গড়।
+
+<Analogy>
+`GROUP BY` হলো প্রতিটা ক্লাসের ছাত্রদের একটা ঘরে ঢুকিয়ে দরজায় শুধু "গড়: ৪.৫৫" লিখে দেওয়া: ভেতরে কে আছে আর দেখা যায় না। Window Function হলো প্রতিটা ছাত্রকে নিজের জায়গায় রেখে, তার ক্লাসের একটা "জানালা" (Window) দিয়ে উঁকি দিয়ে গড়টা তার খাতায় লিখে দেওয়া।
+</Analogy>
+
+## OVER-এর তিন অংশ
+
+```sql
+ফাংশন() OVER (
+  PARTITION BY কোন দলে ভাগ করব       -- না দিলে পুরো টেবিল একটা দল
+  ORDER BY দলের ভেতরে কোন ক্রমে       -- র‍্যাঙ্ক আর চলমান হিসাবে লাগে
+  ROWS BETWEEN ... AND ...            -- Frame: কয়টা Row মিলিয়ে হিসাব (ঐচ্ছিক)
+)
+```
+
+যেকোনো Aggregate (`SUM`, `AVG`, `COUNT`, `MIN`, `MAX`) `OVER` পেলে Window Function হয়ে যায়। আর কয়েকটা আছে যারা শুধু Window হিসেবেই কাজ করে: `ROW_NUMBER`, `RANK`, `DENSE_RANK`, `NTILE`, `LAG`, `LEAD`, `FIRST_VALUE`।
+
+## র‍্যাঙ্কিং: তিন ভাই
+
+সব বিষয়ের নম্বর মিলিয়ে মেধাতালিকা। আমাদের ডেটায় কয়েকটা নম্বর সমান (৯৫, ৯২), তাই পার্থক্যটা পরিষ্কার দেখা যাবে:
+
+```sql
+SELECT s.name, sub.name AS subject, m.score,
+       ROW_NUMBER() OVER (ORDER BY m.score DESC, s.name) AS row_no,
+       RANK()       OVER (ORDER BY m.score DESC) AS rnk,
+       DENSE_RANK() OVER (ORDER BY m.score DESC) AS dense
+FROM marks m
+JOIN students s   ON s.id = m.student_id
+JOIN subjects sub ON sub.id = m.subject_id
+ORDER BY row_no
+LIMIT 8;
+```
+
+| name | subject | score | row_no | rnk | dense |
+| --- | --- | --- | --- | --- | --- |
+| নুসরাত | গণিত | 98 | 1 | 1 | 1 |
+| লামিয়া | বাংলা | 97 | 2 | 2 | 2 |
+| নুসরাত | বিজ্ঞান | 95 | 3 | 3 | 3 |
+| লামিয়া | গণিত | 95 | 4 | 3 | 3 |
+| সাদিয়া | বিজ্ঞান | 94 | 5 | 5 | 4 |
+| নুসরাত | বাংলা | 92 | 6 | 6 | 5 |
+| সাদিয়া | গণিত | 92 | 7 | 6 | 5 |
+| রাফি | বিজ্ঞান | 90 | 8 | 8 | 6 |
+
+| ফাংশন | সমান মানে | পরের নম্বর | মনে রাখার কৌশল |
+| --- | --- | --- | --- |
+| `ROW_NUMBER` | আলাদা নম্বর (১, ২) | টানা | লাইন নম্বর |
+| `RANK` | একই নম্বর (৩, ৩) | ফাঁক রেখে (৫) | অলিম্পিক: দুজন যৌথ ৩য় হলে পরের জন ৫ম |
+| `DENSE_RANK` | একই নম্বর (৩, ৩) | ফাঁক ছাড়া (৪) | "কততম সর্বোচ্চ নম্বর" |
+
+`ROW_NUMBER`-এ সমান নম্বরের দুজনের মধ্যে কে আগে, তার কোনো নিশ্চয়তা নেই; তাই ওখানে `s.name` দিয়ে একটা "টাই-ব্রেকার" দিয়েছি। `RANK` আর `DENSE_RANK`-এ ইচ্ছে করে দিইনি, কারণ সমানকে সমান রাখাই ওদের কাজ।
+
+### দলের ভেতরে র‍্যাঙ্ক
+
+```sql
+SELECT class, name, gpa,
+       RANK() OVER (PARTITION BY class ORDER BY gpa DESC) AS pos
+FROM students
+WHERE gpa IS NOT NULL
+ORDER BY class, pos;
+```
+
+| class | name | gpa | pos |
+| --- | --- | --- | --- |
+| 8 | নুসরাত | 5.00 | 1 |
+| 8 | লামিয়া | 4.95 | 2 |
+| 8 | রাফি | 4.50 | 3 |
+| 8 | তানভীর | 3.75 | 4 |
+| 9 | সাদিয়া | 4.80 | 1 |
+| 9 | মীম | 4.25 | 2 |
+| 9 | আরিফ | 2.90 | 3 |
+| 10 | ইমরান | 4.00 | 1 |
+| 10 | জুবায়ের | 3.50 | 2 |
+
+`PARTITION BY class` প্রতিটা ক্লাসে গোনা আবার ১ থেকে শুরু করে।
+
+## Top-N per group: প্রতিটা বিষয়ের সেরা ২
+
+ইন্টারভিউয়ের সবচেয়ে প্রিয় প্রশ্নগুলোর একটা। কিন্তু সরাসরি লিখলে:
+
+```sql
+SELECT name, RANK() OVER (ORDER BY gpa DESC) AS r
+FROM students
+WHERE r <= 3;
+```
+
+<ErrorBox title="ERROR 1054">
+Unknown column 'r' in 'where clause'
+</ErrorBox>
+
+লেভেল ৮-এর Execution Order মনে আছে? `WHERE` চলে `SELECT`-এর আগে, আর Window Function হিসাব হয় `SELECT` ধাপে। তাই Window-কে একটা Derived Table (বা CTE, পরের লেভেল) বানিয়ে, বাইরে ছাঁকতে হয়:
+
+```sql
+SELECT sub.name AS subject, s.name, m.score
+FROM (
+  SELECT m.*, DENSE_RANK() OVER (PARTITION BY subject_id ORDER BY score DESC) AS r
+  FROM marks m
+) m
+JOIN students s   ON s.id = m.student_id
+JOIN subjects sub ON sub.id = m.subject_id
+WHERE m.r <= 2
+ORDER BY sub.id, m.score DESC, s.name;
+```
+
+| subject | name | score |
+| --- | --- | --- |
+| গণিত | নুসরাত | 98 |
+| গণিত | লামিয়া | 95 |
+| বাংলা | লামিয়া | 97 |
+| বাংলা | নুসরাত | 92 |
+| বিজ্ঞান | নুসরাত | 95 |
+| বিজ্ঞান | সাদিয়া | 94 |
+
+`DENSE_RANK` কেন? দ্বিতীয় স্থানে সমান নম্বরে দুজন থাকলে দুজনই আসবে। হুবহু ২ জন চাইলে `ROW_NUMBER`, সমানে সবাইকে চাইলে `RANK`/`DENSE_RANK`: প্রশ্নটা কী চায়, সেটা বুঝে বাছাই করো।
+
+## চলমান হিসাব: LAG, LEAD আর Frame
+
+মাসিক বেতন আদায়ের একটা ছোট টেবিল বানাই (সংখ্যাগুলো কাল্পনিক):
+
+```sql
+CREATE TABLE fees (
+  month  DATE PRIMARY KEY,
+  amount DECIMAL(10,2) NOT NULL
+);
+INSERT INTO fees VALUES
+  ('2026-01-01', 52000), ('2026-02-01', 48000), ('2026-03-01', 61000),
+  ('2026-04-01', 58000), ('2026-05-01', 66000), ('2026-06-01', 63000);
+```
+
+```sql
+SELECT DATE_FORMAT(month, '%Y-%m') AS month,
+       amount,
+       SUM(amount) OVER (ORDER BY month) AS running_total,
+       amount - LAG(amount) OVER (ORDER BY month) AS change_amt,
+       ROUND(AVG(amount) OVER (ORDER BY month
+             ROWS BETWEEN 2 PRECEDING AND CURRENT ROW), 0) AS avg_3m
+FROM fees
+ORDER BY month;
+```
+
+| month | amount | running_total | change_amt | avg_3m |
+| --- | --- | --- | --- | --- |
+| 2026-01 | 52000.00 | 52000.00 | NULL | 52000 |
+| 2026-02 | 48000.00 | 100000.00 | -4000.00 | 50000 |
+| 2026-03 | 61000.00 | 161000.00 | 13000.00 | 53667 |
+| 2026-04 | 58000.00 | 219000.00 | -3000.00 | 55667 |
+| 2026-05 | 66000.00 | 285000.00 | 8000.00 | 61667 |
+| 2026-06 | 63000.00 | 348000.00 | -3000.00 | 62333 |
+
+- **চলমান যোগফল:** `SUM(...) OVER (ORDER BY month)`; `ORDER BY` থাকলে ডিফল্ট Frame হলো "শুরু থেকে এই Row পর্যন্ত"।
+- **`LAG(x)`** আগের Row-এর মান, **`LEAD(x)`** পরের Row-এর। প্রথম মাসের আগে কিছু নেই, তাই `NULL`। (`LAG(x, 1, 0)` লিখলে `NULL`-এর বদলে ০।)
+- **চলমান গড়:** `ROWS BETWEEN 2 PRECEDING AND CURRENT ROW` মানে "আগের দুটো আর এইটা", তিন মাসের গড়।
+
+## আরও কয়েকটা কাজের Function
+
+```sql
+-- মেধা অনুযায়ী তিন দলে ভাগ (প্রত্যেক দলে সমান সংখ্যক যতটা সম্ভব)
+SELECT name, gpa, NTILE(3) OVER (ORDER BY gpa DESC) AS band
+FROM students WHERE gpa IS NOT NULL ORDER BY gpa DESC;
+
+-- প্রত্যেকের পাশে তার ক্লাসের প্রথম জনের নাম
+SELECT name, class, gpa,
+       FIRST_VALUE(name) OVER (PARTITION BY class ORDER BY gpa DESC) AS class_top
+FROM students WHERE gpa IS NOT NULL ORDER BY class, gpa DESC;
+```
+
+একই Window বারবার লিখতে হলে শেষে নাম দিয়ে রাখা যায়:
+
+```sql
+SELECT name, class, gpa,
+       ROUND(gpa - AVG(gpa) OVER w, 2) AS diff,
+       RANK() OVER w2 AS pos
+FROM students
+WHERE gpa IS NOT NULL
+WINDOW w  AS (PARTITION BY class),
+       w2 AS (PARTITION BY class ORDER BY gpa DESC)
+ORDER BY class, pos;
+```
+
+| name | class | gpa | diff | pos |
+| --- | --- | --- | --- | --- |
+| নুসরাত | 8 | 5.00 | 0.45 | 1 |
+| লামিয়া | 8 | 4.95 | 0.40 | 2 |
+| রাফি | 8 | 4.50 | -0.05 | 3 |
+| তানভীর | 8 | 3.75 | -0.80 | 4 |
+| সাদিয়া | 9 | 4.80 | 0.82 | 1 |
+| মীম | 9 | 4.25 | 0.27 | 2 |
+| আরিফ | 9 | 2.90 | -1.08 | 3 |
+| ইমরান | 10 | 4.00 | 0.25 | 1 |
+| জুবায়ের | 10 | 3.50 | -0.25 | 2 |
+
+<Remember>
+**`GROUP BY` দলকে এক লাইনে মেশায়; Window Function প্রতিটা Row রেখে পাশে দলের হিসাব বসায়।** আর Window Function হিসাব হয় `SELECT` ধাপে, তাই এর ফল দিয়ে ছাঁকতে (`WHERE rn <= 3`) সবসময় বাইরে একটা Derived Table বা CTE লাগে।
+</Remember>
+
+<BugMonster title="জানালার ফাঁদ">
+
+**১. `WHERE`-এ Window Function।** ওপরের `ERROR 1054`। Derived Table বা CTE-তে মুড়িয়ে বাইরে ছাঁকো।
+
+**২. ভুল র‍্যাঙ্ক ফাংশন।** "প্রত্যেক বিষয়ে দ্বিতীয় সর্বোচ্চ নম্বর" চাইলে `DENSE_RANK() = 2`; `RANK`-এ সমান প্রথম দুজন থাকলে ২ নম্বর কেউ থাকবেই না।
+
+**৩. `ORDER BY` ছাড়া চলমান যোগফল।** `SUM(amount) OVER ()` প্রতিটা Row-এ মোট যোগফল দেয়, চলমান না। চলমান মানেই `OVER (ORDER BY ...)`।
+
+**৪. `LAST_VALUE`-এর অবাক ফল।** `ORDER BY` থাকলে ডিফল্ট Frame "শুরু থেকে এই Row পর্যন্ত", তাই `LAST_VALUE` প্রায়ই নিজের মানই দেয়। পুরো দলের শেষটা চাইলে Frame লেখো: `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING`, বা উল্টো ক্রমে `FIRST_VALUE`।
+
+</BugMonster>
+
+<Quest id="1" title="গড়ের সাথে দূরত্ব">
+প্রত্যেক ছাত্রের প্রতিটা নম্বরের পাশে ওই বিষয়ের গড় নম্বর (এক দশমিকে) আর গড় থেকে কত বেশি/কম, দেখাও।
+
+<Solution>
+```sql
+SELECT s.name, m.subject_id, m.score,
+       ROUND(AVG(m.score) OVER (PARTITION BY m.subject_id), 1) AS subject_avg,
+       ROUND(m.score - AVG(m.score) OVER (PARTITION BY m.subject_id), 1) AS diff
+FROM marks m
+JOIN students s ON s.id = m.student_id
+ORDER BY m.subject_id, m.score DESC;
+```
+</Solution>
+</Quest>
+
+<Quest id="2" title="প্রতি ক্লাসের দ্বিতীয়">
+প্রতিটা ক্লাসে GPA-তে দ্বিতীয় স্থানে কে? সমান হলে সবাই।
+
+<Solution>
+```sql
+SELECT class, name, gpa
+FROM (
+  SELECT class, name, gpa,
+         DENSE_RANK() OVER (PARTITION BY class ORDER BY gpa DESC) AS r
+  FROM students
+  WHERE gpa IS NOT NULL
+) t
+WHERE r = 2;
+```
+
+ক্লাস ৮: লামিয়া, ৯: মীম, ১০: জুবায়ের।
+</Solution>
+</Quest>
+
+<Quest id="3" title="সবচেয়ে বড় লাফ">
+`fees` টেবিলে কোন মাসে আগের মাসের তুলনায় আদায় সবচেয়ে বেশি বেড়েছে?
+
+<Solution>
+```sql
+SELECT month, change_amt
+FROM (
+  SELECT month, amount - LAG(amount) OVER (ORDER BY month) AS change_amt
+  FROM fees
+) t
+ORDER BY change_amt DESC
+LIMIT 1;
+```
+
+২০২৬-০৩, ১৩০০০ টাকা বেশি।
+</Solution>
+</Quest>
+
+<Boss title="মেধাতালিকার কার্ড">
+প্রতিটা ছাত্রের (যাদের নম্বর আছে) জন্য এক লাইনে: মোট নম্বর, স্কুলে মোট নম্বরে অবস্থান (`RANK`), নিজের ক্লাসে অবস্থান, নিজের ক্লাসের সেরার চেয়ে কত কম, আর মোট নম্বরে ঠিক ওপরের জনের চেয়ে কত কম। স্কুলের অবস্থান অনুযায়ী সাজাও।
+
+<Solution>
+```sql
+SELECT name, class, total,
+       RANK() OVER (ORDER BY total DESC) AS school_pos,
+       RANK() OVER (PARTITION BY class ORDER BY total DESC) AS class_pos,
+       MAX(total) OVER (PARTITION BY class) - total AS behind_class_top,
+       LAG(total) OVER (ORDER BY total DESC) - total AS behind_next
+FROM (
+  SELECT s.name, s.class, SUM(m.score) AS total
+  FROM students s
+  JOIN marks m ON m.student_id = s.id
+  GROUP BY s.id, s.name, s.class
+) t
+ORDER BY school_pos;
+```
+
+কৌশল: আগে ভেতরে `GROUP BY` দিয়ে মোট বের করেছি, তারপর বাইরে তার ওপর Window। একই Query-তে একাধিক আলাদা `OVER` থাকতে পারে। নুসরাত (২৮৫) প্রথম, তার `behind_next` `NULL`, কারণ ওপরে কেউ নেই।
+</Solution>
+</Boss>
+
+<Summary slug="level-4-2" />
+
+<Checkpoint questions={[
+  { q: "GROUP BY আর Window Function-এর মূল পার্থক্য?", options: ["কোনো পার্থক্য নেই", "GROUP BY দলকে এক লাইনে মেশায়; Window প্রতিটা Row রেখে পাশে দলের হিসাব দেয়", "Window শুধু সংখ্যায় চলে", "GROUP BY দ্রুত, তাই Window দরকার নেই"], answer: 1, why: "Window Function-এ Row হারায় না।" },
+  { q: "নম্বর ৯৮, ৯৫, ৯৫, ৯৪ হলে RANK কী দেবে?", options: ["১, ২, ৩, ৪", "১, ২, ২, ৩", "১, ২, ২, ৪", "১, ১, ২, ৩"], answer: 2, why: "RANK সমানে একই নম্বর দেয়, তারপর ফাঁক রাখে।" },
+  { q: "একই নম্বরে DENSE_RANK কী দেবে?", options: ["১, ২, ২, ৩", "১, ২, ২, ৪", "১, ২, ৩, ৪", "১, ১, ১, ২"], answer: 0, why: "DENSE_RANK ফাঁক রাখে না।" },
+  { q: "WHERE RANK() OVER (...) <= 3 কেন চলে না?", options: ["RANK ধীর", "Window Function হিসাব হয় SELECT ধাপে, WHERE চলে তার আগে", "MySQL-এ RANK নেই", "<= চলে না"], answer: 1, why: "Derived Table বা CTE-তে রেখে বাইরে ছাঁকো।" },
+  { q: "LAG(amount) OVER (ORDER BY month) কী দেয়?", options: ["পরের মাসের মান", "আগের মাসের মান", "মোট যোগফল", "গড়"], answer: 1, why: "LAG = আগের Row, LEAD = পরের Row।" }
+]} />

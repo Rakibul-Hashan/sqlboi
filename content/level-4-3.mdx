@@ -1,0 +1,296 @@
+<Mission>
+- **CTE** (`WITH`): লম্বা Query-কে ছোট, নাম দেওয়া ধাপে ভাঙা
+- এক `WITH`-এ একাধিক CTE, যেখানে পরেরটা আগেরটা ব্যবহার করে
+- **Recursive CTE**: নিজেকেই ডাকা Query, আর তার থামার শর্ত
+- তিনটা বাস্তব কাজ: সংখ্যা আর তারিখের সারি বানানো, অনুপস্থিত দিন খোঁজা, পদের গাছ (Hierarchy)
+</Mission>
+
+<Note title="শুরুর আগে">
+জোন ২-এর খাতা ([school-zone2.sql](/sql/school-zone2.sql)) চালাও। CTE MySQL 8.0 আর MariaDB 10.2 থেকে আছে। লেভেল ১২-এ CTE-র এক ঝলক দেখেছিলাম; এবার পুরোটা।
+</Note>
+
+## CTE: Query-র ভেতরে নাম দেওয়া ধাপ
+
+"প্রতিটা ক্লাসে কয়জন নিজের ক্লাসের গড়ের চেয়ে ভালো, আর তারা কারা?" একবারে ভাবলে জটিল লাগে। ধাপে ভাঙি: (১) প্রতিটা ক্লাসের গড়; (২) গড়ের চেয়ে ভালো কারা; (৩) ক্লাস অনুযায়ী গোনা।
+
+```sql
+WITH
+  class_avg AS (
+    SELECT class, AVG(gpa) AS avg_gpa
+    FROM students
+    GROUP BY class
+  ),
+  above AS (
+    SELECT s.name, s.class, s.gpa
+    FROM students s
+    JOIN class_avg c ON c.class = s.class
+    WHERE s.gpa > c.avg_gpa
+  )
+SELECT class, COUNT(*) AS above_avg,
+       GROUP_CONCAT(name ORDER BY gpa DESC SEPARATOR ', ') AS names
+FROM above
+GROUP BY class
+ORDER BY class;
+```
+
+| class | above_avg | names |
+| --- | --- | --- |
+| 8 | 2 | নুসরাত, লামিয়া |
+| 9 | 2 | সাদিয়া, মীম |
+| 10 | 1 | ইমরান |
+
+- `WITH` একবারই লেখা হয়; একাধিক CTE কমা দিয়ে আলাদা।
+- `above` ব্যবহার করছে `class_avg`-কে: পরের CTE আগেরগুলোকে দেখতে পায়।
+- Query ওপর থেকে নিচে গল্পের মতো পড়া যায়, যেটা একই কাজের নেস্টেড Subquery দিয়ে কঠিন।
+
+CTE শুধু ওই একটা Query-র ভেতরে বাঁচে; View-এর মতো Database-এ জমা থাকে না। একটা CTE একই Query-তে বারবার ব্যবহার করা যায়, যেটা Derived Table দিয়ে করতে হলে প্রতিবার পুরোটা আবার লিখতে হতো (লেভেল ১২-এর বস চ্যালেঞ্জ মনে করো)।
+
+Window Function-এর ফল দিয়ে ছাঁকার জন্যও CTE খুব পরিষ্কার:
+
+```sql
+WITH totals AS (
+  SELECT student_id, SUM(score) AS total FROM marks GROUP BY student_id
+),
+ranked AS (
+  SELECT t.*, DENSE_RANK() OVER (ORDER BY total DESC) AS r FROM totals t
+)
+SELECT s.name, r.total, r.r
+FROM ranked r
+JOIN students s ON s.id = r.student_id
+WHERE r.r <= 3
+ORDER BY r.r;
+```
+
+| name | total | r |
+| --- | --- | --- |
+| নুসরাত | 285 | 1 |
+| সাদিয়া | 274 | 2 |
+| রাফি | 253 | 3 |
+
+## Recursive CTE: নিজেকে ডাকা Query
+
+```sql
+WITH RECURSIVE n (x) AS (
+  SELECT 1                          -- ১. ভিত্তি (Anchor): শুরুটা
+  UNION ALL
+  SELECT x + 1 FROM n WHERE x < 5   -- ২. পুনরাবৃত্তি: আগের ধাপ থেকে পরেরটা
+)
+SELECT x, x * x AS square FROM n;
+```
+
+| x | square |
+| --- | --- |
+| 1 | 1 |
+| 2 | 4 |
+| 3 | 9 |
+| 4 | 16 |
+| 5 | 25 |
+
+কীভাবে চলে: ভিত্তি অংশ দেয় `1`। তারপর পুনরাবৃত্ত অংশ সেই `1` থেকে `2` বানায়, তারপর `2` থেকে `3`... যতক্ষণ `WHERE x < 5` সত্যি। কোনো নতুন Row না এলে থামে। লেভেল ১৬-এ এক লাখ লাইনের টেবিল এভাবেই বানিয়েছিলাম।
+
+<Remember>
+**Recursive CTE-র তিনটা অংশ: `WITH RECURSIVE`, ভিত্তি অংশ, `UNION ALL`, আর থামার শর্তসহ পুনরাবৃত্ত অংশ।** থামার শর্ত ভুলে গেলে MySQL ১০০১ ধাপ পরে নিজেই থামিয়ে দেয়:
+
+```sql
+WITH RECURSIVE n (x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n)
+SELECT COUNT(*) FROM n;
+-- ERROR 3636: Recursive query aborted after 1001 iterations.
+```
+
+সত্যিই বেশি দরকার হলে `SET SESSION cte_max_recursion_depth = 100000;`। (MariaDB-তে সীমার নাম `max_recursive_iterations`।)
+</Remember>
+
+## কাজ ১: তারিখের সারি আর অনুপস্থিত দিন
+
+একটা ছোট হাজিরা খাতা বানাই। রাফি কয়েকদিন আসেনি; কোন কোন দিন?
+
+```sql
+CREATE TABLE attendance (
+  student_id INT NOT NULL,
+  day        DATE NOT NULL,
+  PRIMARY KEY (student_id, day),
+  FOREIGN KEY (student_id) REFERENCES students(id)
+);
+INSERT INTO attendance VALUES
+  (1, '2026-11-01'), (1, '2026-11-02'), (1, '2026-11-04'), (1, '2026-11-05'), (1, '2026-11-07'),
+  (2, '2026-11-01'), (2, '2026-11-02'), (2, '2026-11-03'), (2, '2026-11-04'),
+  (2, '2026-11-05'), (2, '2026-11-06'), (2, '2026-11-07');
+```
+
+সমস্যা: যে দিন সে আসেনি, সেই দিনের কোনো Row-ই নেই। "নেই"-কে খুঁজতে আগে "সব দিন"-এর একটা তালিকা লাগবে, তারপর লেভেল ১১-এর Anti Join:
+
+```sql
+WITH RECURSIVE days (d) AS (
+  SELECT DATE('2026-11-01')
+  UNION ALL
+  SELECT d + INTERVAL 1 DAY FROM days WHERE d < '2026-11-07'
+)
+SELECT d AS absent_day, DAYNAME(d) AS weekday
+FROM days
+LEFT JOIN attendance a ON a.day = days.d AND a.student_id = 1
+WHERE a.day IS NULL;
+```
+
+| absent_day | weekday |
+| --- | --- |
+| 2026-11-03 | Tuesday |
+| 2026-11-06 | Friday |
+
+এই কৌশলটা বাস্তবে অনেক কাজে লাগে: যে মাসে কোনো বিক্রি হয়নি, যে ঘণ্টায় কোনো অর্ডার আসেনি, ক্রমিক নম্বরে কোন রসিদ হারিয়েছে।
+
+## কাজ ২: পদের গাছ (Hierarchy)
+
+লেভেল ১১-এর Self Join শুধু এক ধাপ ওপরে দেখতে পারত (শিক্ষক → প্রধান)। কিন্তু প্রধানের প্রধান, তাঁরও প্রধান? কয় ধাপ, আগে থেকে জানি না। Recursive CTE ঠিক এই সমস্যার জন্য:
+
+```sql
+WITH RECURSIVE tree AS (
+  SELECT id, name, head_id, 1 AS depth, CAST(name AS CHAR(200)) AS path
+  FROM teachers
+  WHERE head_id IS NULL                      -- ভিত্তি: সবার ওপরে যিনি
+  UNION ALL
+  SELECT t.id, t.name, t.head_id, tree.depth + 1,
+         CONCAT(tree.path, ' → ', t.name)
+  FROM teachers t
+  JOIN tree ON t.head_id = tree.id           -- আগের ধাপের অধীনে যারা
+)
+SELECT CONCAT(REPEAT('— ', depth - 1), name) AS teacher, depth, path
+FROM tree
+ORDER BY path;
+```
+
+| teacher | depth | path |
+| --- | --- | --- |
+| হাসান স্যার | 1 | হাসান স্যার |
+| — কামাল স্যার | 2 | হাসান স্যার → কামাল স্যার |
+| — রুমানা ম্যাডাম | 2 | হাসান স্যার → রুমানা ম্যাডাম |
+| — — শারমিন ম্যাডাম | 3 | হাসান স্যার → রুমানা ম্যাডাম → শারমিন ম্যাডাম |
+
+`CAST(name AS CHAR(200))` কেন? Recursive CTE-তে প্রতিটা Column-এর Type ঠিক হয় **ভিত্তি অংশ** থেকে। `path`-এর শুরু `name` দিয়ে, যার Type `VARCHAR(100)`; লম্বা পথ জুড়তে জুড়তে ১০০ অক্ষর পেরোলে MySQL `ERROR 1406: Data too long for column 'path'` দেয়। তাই শুরুতেই চওড়া করে নিয়েছি।
+
+উল্টো দিকেও যাওয়া যায়: শারমিন ম্যাডাম থেকে ওপরের দিকে পুরো শিকল:
+
+```sql
+WITH RECURSIVE chain AS (
+  SELECT id, name, head_id FROM teachers WHERE name = 'শারমিন ম্যাডাম'
+  UNION ALL
+  SELECT t.id, t.name, t.head_id
+  FROM teachers t
+  JOIN chain c ON t.id = c.head_id
+)
+SELECT name FROM chain;
+```
+
+| name |
+| --- |
+| শারমিন ম্যাডাম |
+| রুমানা ম্যাডাম |
+| হাসান স্যার |
+
+কোম্পানির পদ, ক্যাটাগরির ভেতরে ক্যাটাগরি (ইলেকট্রনিক্স → মোবাইল → স্মার্টফোন), কমেন্টের উত্তরের উত্তর: সবই এই একই নকশা।
+
+<BugMonster title="পুনরাবৃত্তির ফাঁদ">
+
+**১. থামার শর্ত নেই।** `ERROR 3636`। পুনরাবৃত্ত অংশে সবসময় এমন `WHERE` বা `JOIN` যা একসময় খালি হয়ে যায়।
+
+**২. ডেটায় চক্র।** কেউ ভুলে লিখল ক-এর প্রধান খ, আর খ-এর প্রধান ক। তখন গাছ কখনো শেষ হয় না। পাহারার জন্য `path`-এ নিজের নাম আগে থেকেই আছে কি না দেখা যায়: `WHERE FIND_IN_SET(t.id, tree.visited) = 0`, যেখানে `visited` হলো এ পর্যন্ত দেখা `id`-গুলোর কমা-দেওয়া তালিকা।
+
+**৩. Column-এর চওড়া কম।** `ERROR 1406`। ভিত্তি অংশে `CAST(... AS CHAR(n))`।
+
+**৪. পুনরাবৃত্ত অংশে নিষিদ্ধ জিনিস।** সেখানে Aggregate (`SUM`, `COUNT`), Window Function, `GROUP BY`, `ORDER BY` আর `DISTINCT` চলে না। এগুলো লাগলে বাইরের `SELECT`-এ করো।
+
+</BugMonster>
+
+<Quest id="1" title="১ থেকে ১২ মাস">
+একটা CTE দিয়ে ২০২৬ সালের ১২টা মাসের প্রথম দিনের তালিকা বানাও (`2026-01-01`, `2026-02-01`, ...)।
+
+<Solution>
+```sql
+WITH RECURSIVE months (m) AS (
+  SELECT DATE('2026-01-01')
+  UNION ALL
+  SELECT m + INTERVAL 1 MONTH FROM months WHERE m < '2026-12-01'
+)
+SELECT m FROM months;
+```
+</Solution>
+</Quest>
+
+<Quest id="2" title="কোন মাসে আদায় হয়নি?">
+লেভেল ৪.২-এর `fees` টেবিলে (জানুয়ারি থেকে জুন ২০২৬) ২০২৬-এর কোন কোন মাসের কোনো আদায় নেই? (বানাওনি থাকলে লেভেল ৪.২ থেকে `CREATE TABLE fees` আর `INSERT` চালাও।)
+
+<Solution>
+```sql
+WITH RECURSIVE months (m) AS (
+  SELECT DATE('2026-01-01')
+  UNION ALL
+  SELECT m + INTERVAL 1 MONTH FROM months WHERE m < '2026-12-01'
+)
+SELECT DATE_FORMAT(m, '%Y-%m') AS missing
+FROM months
+LEFT JOIN fees f ON f.month = months.m
+WHERE f.month IS NULL;
+```
+
+জুলাই থেকে ডিসেম্বর, ছয়টা মাস।
+</Solution>
+</Quest>
+
+<Quest id="3" title="কার অধীনে কতজন, সব স্তর মিলিয়ে">
+প্রত্যেক শিক্ষকের অধীনে (সরাসরি আর পরোক্ষ মিলিয়ে) মোট কতজন শিক্ষক আছেন? যেমন হাসান স্যারের অধীনে তিনজন।
+
+<Solution>
+```sql
+WITH RECURSIVE under AS (
+  SELECT id AS boss_id, id AS member_id FROM teachers
+  UNION ALL
+  SELECT u.boss_id, t.id
+  FROM under u
+  JOIN teachers t ON t.head_id = u.member_id
+)
+SELECT tch.name, COUNT(*) - 1 AS team_size
+FROM under u
+JOIN teachers tch ON tch.id = u.boss_id
+GROUP BY u.boss_id, tch.name
+ORDER BY team_size DESC;
+```
+
+কৌশল: প্রত্যেককে নিজের "দলের" শুরু ধরে (ভিত্তি অংশে সবাই), তারপর নিচের দিকে নামতে থাকা। শেষে নিজেকে বাদ দিতে `- 1`। হাসান স্যার ৩, রুমানা ম্যাডাম ১, বাকিরা ০।
+</Solution>
+</Quest>
+
+<Boss title="টানা উপস্থিতির রেকর্ড">
+হাজিরা খাতা থেকে বের করো, নুসরাত (`id` ২) নভেম্বরের প্রথম সপ্তাহে টানা কতদিন উপস্থিত ছিল, আর রাফির (`id` ১) সবচেয়ে লম্বা টানা উপস্থিতি কত দিনের।
+
+ইঙ্গিত: টানা দিনগুলোর একটা বিশেষ গুণ আছে। দিনের তারিখ থেকে সেই দিনের `ROW_NUMBER` বিয়োগ করলে, একই টানা অংশের সব দিনের ফল একই তারিখ হয়।
+
+<Solution>
+```sql
+WITH numbered AS (
+  SELECT student_id, day,
+         day - INTERVAL ROW_NUMBER() OVER (PARTITION BY student_id ORDER BY day) DAY AS grp
+  FROM attendance
+),
+streaks AS (
+  SELECT student_id, grp, COUNT(*) AS len, MIN(day) AS from_day, MAX(day) AS to_day
+  FROM numbered
+  GROUP BY student_id, grp
+)
+SELECT s.name, MAX(len) AS longest_streak
+FROM streaks st
+JOIN students s ON s.id = st.student_id
+GROUP BY s.id, s.name;
+```
+
+নুসরাত ৭ দিন, রাফি ২ দিন। এটাকে বলে **Gaps and Islands** কৌশল: রাফির দিনগুলো (১, ২, ৪, ৫, ৭) থেকে ক্রমিক নম্বর (১, ২, ৩, ৪, ৫) বিয়োগ করলে পাই (০, ০, ১, ১, ২); একই সংখ্যা মানে একই টানা "দ্বীপ"। CTE, Window Function আর `GROUP BY` তিনটা একসাথে।
+</Solution>
+</Boss>
+
+<Summary slug="level-4-3" />
+
+<Checkpoint questions={[
+  { q: "এক WITH-এ একাধিক CTE কীভাবে লেখা হয়?", options: ["প্রতিটার জন্য আলাদা WITH", "একবার WITH, তারপর কমা দিয়ে আলাদা", "UNION দিয়ে", "সম্ভব না"], answer: 1, why: "WITH a AS (...), b AS (...) SELECT ...; আর b, a-কে ব্যবহার করতে পারে।" },
+  { q: "Recursive CTE-র দুই অংশ কী দিয়ে জোড়া হয়?", options: ["JOIN", "UNION ALL", "AND", "WHERE"], answer: 1, why: "ভিত্তি অংশ UNION ALL পুনরাবৃত্ত অংশ।" },
+  { q: "থামার শর্ত না দিলে MySQL কী করে?", options: ["চিরকাল চলে", "১০০১ ধাপ পরে ERROR 3636 দিয়ে থামে", "প্রথম Row দেয়", "খালি ফলাফল"], answer: 1, why: "cte_max_recursion_depth-এর ডিফল্ট সীমা ১০০০।" },
+  { q: "Recursive CTE-তে লম্বা path বানাতে গিয়ে ERROR 1406 কেন আসে?", options: ["CONCAT নিষেধ", "Column-এর চওড়া ঠিক হয় ভিত্তি অংশ থেকে, পথ তার চেয়ে লম্বা হয়ে গেছে", "Recursive-এ লেখা চলে না", "UTF-8 সমস্যা"], answer: 1, why: "ভিত্তি অংশে CAST(name AS CHAR(200)) দিয়ে চওড়া করো।" },
+  { q: "অনুপস্থিত দিন খুঁজতে কোন দুটো কৌশল মেলাতে হলো?", options: ["UNION আর INDEX", "Recursive CTE দিয়ে সব দিনের তালিকা + LEFT JOIN Anti Join", "GROUP BY আর HAVING", "Trigger আর View"], answer: 1, why: "\"নেই\"-কে খুঁজতে আগে \"সব\" বানাতে হয়, তারপর মিল না থাকাগুলো।" }
+]} />

@@ -1,0 +1,369 @@
+<Mission>
+- আলাদা **User** বানানো, আর `root` দিয়ে অ্যাপ না চালানো
+- `GRANT` / `REVOKE` দিয়ে **Privilege**, **Role**, আর Least Privilege নীতি
+- View দিয়ে সংবেদনশীল Column লুকানো
+- `mysqldump` দিয়ে **Backup** আর **Restore**
+- লেভেল ০-এর ডেমোর **SQL Injection** ফাঁক খুঁজে বের করে বন্ধ করা
+</Mission>
+
+<Story>
+এতদিন আমরা সব কাজ করেছি `root` দিয়ে, যে Database-এর রাজা: সব দেখতে পারে, সব মুছতে পারে। নিজের কম্পিউটারে শেখার সময় এটা সুবিধাজনক। কিন্তু বাস্তবে অ্যাপ যদি `root` দিয়ে চলে, তাহলে অ্যাপের একটা ছোট্ট বাগ মানেই পুরো সার্ভারের চাবি আক্রমণকারীর হাতে। আজ রাজধানীর দুর্গে পাহারা বসাব।
+</Story>
+
+<Note title="শুরুর আগে">
+জোন ২-এর খাতা ([school-zone2.sql](/sql/school-zone2.sql)) চালিয়ে নাও। এই লেভেলের User-সংক্রান্ত কমান্ডগুলো `root` দিয়ে চালাতে হবে।
+</Note>
+
+## User: কে, কোথা থেকে
+
+MySQL-এ একটা User মানে **নাম + কোথা থেকে আসছে (Host)**:
+
+```sql
+CREATE USER 'school_app'@'localhost' IDENTIFIED BY 'Str0ng-Pass!2026';
+```
+
+- `'school_app'@'localhost'` শুধু একই কম্পিউটার থেকে ঢুকতে পারবে।
+- `'school_app'@'%'` যেকোনো জায়গা থেকে (`%` = যেকোনো Host)। ইন্টারনেটে খোলা সার্ভারে এটা বিপজ্জনক।
+- `'school_app'@'192.168.1.%'` শুধু অফিসের নেটওয়ার্ক থেকে।
+
+এখানে পাসওয়ার্ডটা শুধু উদাহরণ; নিজের জন্য লম্বা, এলোমেলো পাসওয়ার্ড বানাও, আর কোনো কোডে বা Git-এ সরাসরি লিখে রেখো না।
+
+<Tip title="XAMPP-এর root">
+XAMPP-এ `root`-এর শুরুতে কোনো পাসওয়ার্ড থাকে না। নিজের কম্পিউটারে শেখার জন্য চলে, কিন্তু অন্য কেউ নেটওয়ার্ক থেকে ঢুকতে পারলে বিপদ। পাসওয়ার্ড দাও: **`ALTER USER 'root'@'localhost' IDENTIFIED BY 'নতুন-শক্ত-পাসওয়ার্ড';`** (তারপর phpMyAdmin-এর `config.inc.php`-তেও পাসওয়ার্ডটা বসাতে হবে, নাহলে phpMyAdmin ঢুকতে পারবে না।)
+</Tip>
+
+## GRANT: কে কী করতে পারবে
+
+নতুন User কিছুই করতে পারে না। অনুমতি দিতে হয়:
+
+```sql
+GRANT SELECT, INSERT ON school.students TO 'school_app'@'localhost';
+SHOW GRANTS FOR 'school_app'@'localhost';
+```
+
+| Grants for school_app@localhost |
+| --- |
+| GRANT USAGE ON \*.\* TO \`school_app\`@\`localhost\` |
+| GRANT SELECT, INSERT ON \`school\`.\`students\` TO \`school_app\`@\`localhost\` |
+
+(`USAGE` মানে "শুধু ঢুকতে পারে, আর কিছু না"।) এবার `school_app` হয়ে চেষ্টা করি:
+
+```sql
+DELETE FROM students;
+```
+
+<ErrorBox title="ERROR 1142">
+DELETE command denied to user 'school_app'@'localhost' for table 'students'
+</ErrorBox>
+
+অনুমতি কতটা বিস্তৃত, সেটা বেছে নেওয়া যায়:
+
+| লেখা | কোথায় |
+| --- | --- |
+| `ON *.*` | পুরো সার্ভার (প্রায় কখনো না) |
+| `ON school.*` | `school`-এর সব টেবিল |
+| `ON school.students` | শুধু একটা টেবিল |
+| `GRANT SELECT (name, class) ON school.students` | শুধু কয়েকটা Column |
+
+প্রচলিত Privilege: `SELECT`, `INSERT`, `UPDATE`, `DELETE` (ডেটা), `CREATE`, `ALTER`, `DROP`, `INDEX` (গঠন), `EXECUTE` (Procedure চালানো), `ALL PRIVILEGES` (সব)।
+
+```sql
+REVOKE INSERT ON school.students FROM 'school_app'@'localhost';   -- ফিরিয়ে নাও
+DROP USER 'school_app'@'localhost';                               -- User-ই মুছে দাও
+```
+
+(পরের অংশে `school_app` লাগবে, তাই পরীক্ষা শেষে আবার বানিয়ে `SELECT, INSERT` দিয়ে রাখো।)
+
+<Remember>
+**Least Privilege: প্রত্যেককে ঠিক ততটুকু অনুমতি দাও, যতটুকু ছাড়া কাজ চলে না। এক বিন্দুও বেশি না।** ওয়েবসাইটের User-এর `DROP` লাগে না। রিপোর্ট দেখার User-এর `UPDATE` লাগে না। তাহলে কোনো User-এর পাসওয়ার্ড চুরি হলেও ক্ষতি সীমিত থাকে।
+</Remember>
+
+## Role: অনুমতির দল
+
+২০ জন শিক্ষককে আলাদা আলাদা একই অনুমতি দেওয়ার চেয়ে একটা **Role** বানিয়ে সবাইকে সেটা দেওয়া সহজ (MySQL 8.0+):
+
+```sql
+CREATE ROLE 'teacher_role';
+GRANT SELECT ON school.* TO 'teacher_role';
+GRANT INSERT, UPDATE ON school.marks TO 'teacher_role';
+
+CREATE USER 'hasan'@'localhost' IDENTIFIED BY 'Ha$an-2026-strong';
+GRANT 'teacher_role' TO 'hasan'@'localhost';
+SET DEFAULT ROLE 'teacher_role' TO 'hasan'@'localhost';
+```
+
+এখন হাসান স্যার নম্বর দিতে আর বদলাতে পারবেন, কিন্তু মুছতে পারবেন না। আমরা পরীক্ষা করে দেখেছি: `UPDATE marks` সফল, `DELETE FROM marks` দেয় `ERROR 1142`। নিয়ম বদলালে শুধু Role বদলাও, সব শিক্ষকের অনুমতি একসাথে বদলে যায়।
+
+(`SET DEFAULT ROLE` না দিলে User লগইন করার পর Role নিজে থেকে চালু হয় না। MariaDB-তে লেখাটা একটু আলাদা: `SET DEFAULT ROLE teacher_role FOR 'hasan'@'localhost';`।)
+
+## View দিয়ে Column লুকানো
+
+অফিস স্টাফের ছাত্রদের তালিকা দেখা দরকার, কিন্তু ফোন নম্বর বা GPA না:
+
+```sql
+CREATE VIEW school.student_directory AS
+SELECT id, name, class, section FROM school.students;
+
+CREATE USER 'office'@'localhost' IDENTIFIED BY 'Off1ce-2026-pass';
+GRANT SELECT ON school.student_directory TO 'office'@'localhost';
+```
+
+`office` হয়ে:
+
+```sql
+SELECT * FROM student_directory LIMIT 1;   -- চলে: 1, রাফি, 8, A
+SELECT phone FROM students LIMIT 1;        -- ERROR 1142: SELECT command denied
+```
+
+লেভেল ১৭-এর View এখানে নিরাপত্তার দেয়াল।
+
+## Backup আর Restore
+
+হার্ডডিস্ক নষ্ট হয়, কেউ ভুলে `DROP DATABASE` চালায়, ransomware সব এনক্রিপ্ট করে ফেলে। **Backup না থাকা মানে একদিন সব হারানো।**
+
+`mysqldump` হলো MySQL-এর সাথে আসা একটা টুল, যেটা পুরো Database-কে একটা `.sql` ফাইলে লিখে দেয় (`CREATE TABLE` আর `INSERT`)। এটা SQL কমান্ড না, **টার্মিনাল (Command Prompt)**-এর কমান্ড। XAMPP-এ এটা থাকে `C:\xampp\mysql\bin`-এ।
+
+```bash
+# Backup
+mysqldump -u root -p --single-transaction --routines --triggers \
+  --default-character-set=utf8mb4 school > school_backup.sql
+
+# Restore (আগে খালি Database বানিয়ে)
+mysql -u root -p -e "CREATE DATABASE school CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+mysql -u root -p school < school_backup.sql
+```
+
+- `-p` দিলে পাসওয়ার্ড জিজ্ঞেস করবে; কমান্ডের ভেতরে পাসওয়ার্ড লিখো না, কারণ সেটা টার্মিনালের ইতিহাসে থেকে যায়।
+- `--single-transaction`: InnoDB টেবিলের একটা সামঞ্জস্যপূর্ণ Snapshot নেয় (লেভেল ১৮-এর Isolation!), Backup চলার সময় অ্যাপ বন্ধ রাখতে হয় না।
+- `--routines --triggers`: Procedure, Function আর Trigger-ও সাথে নেয়। না দিলে লেভেল ১৭-এর সব পরিশ্রম Backup-এ থাকবে না।
+- `--default-character-set=utf8mb4`: বাংলা যেন অক্ষত থাকে।
+
+আমরা Backup নিয়ে, Database মুছে, Restore করে দেখেছি: ১০ জন ছাত্র, বাংলা নামসহ, সব ফিরে এসেছে।
+
+phpMyAdmin-এ একই কাজ: **Export** ট্যাব (Backup) আর **Import** ট্যাব (Restore)।
+
+<Tip title="৩-২-১ নিয়ম">
+Backup-এর বহুল প্রচলিত নিয়ম: **অন্তত ৩টা কপি, ২ রকম মাধ্যমে, যার ১টা অন্য জায়গায়** (অন্য শহর বা ক্লাউডে)। আর সবচেয়ে জরুরি: **মাঝে মাঝে Restore করে দেখো।** কখনো পরীক্ষা না করা Backup আসলে Backup না, একটা আশা মাত্র।
+</Tip>
+
+## SQL Injection: লেভেল ০-এর ফাঁক
+
+এবার সেই প্রতিশ্রুতি। লেভেল ০-এর `index.php`-র এই লাইনটা মনে আছে?
+
+```php
+$db->query("INSERT INTO students (name) VALUES ('$name')"); // ⚠️ এখানে একটা ফাঁক আছে
+```
+
+ইউজার যা লেখে, সেটা সরাসরি SQL-এর ভেতরে বসে যায়। সাধারণ নাম "রাফি" দিলে Query হয়:
+
+```sql
+INSERT INTO students (name) VALUES ('রাফি')
+```
+
+কিন্তু কেউ যদি নামের ঘরে এটা লেখে:
+
+```text
+হ্যাকার'), ((SELECT USER())), ((SELECT code FROM secrets))-- 
+```
+
+(শেষে `--`-এর পরে একটা স্পেস।) তাহলে Query হয়ে যায়:
+
+```sql
+INSERT INTO students (name) VALUES ('হ্যাকার'), ((SELECT USER())), ((SELECT code FROM secrets))-- ')
+```
+
+ইউজারের লেখা `'` চিহ্নটা নামের উদ্ধৃতি বন্ধ করে দিল, তারপর দুটো নতুন Row যোগ করল, যাদের "নাম" হলো Database-এর গোপন তথ্য, আর `--` বাকি অংশকে Comment বানিয়ে দিল। আমরা ঠিক লেভেল ০-এর কোডে এটা চালিয়ে দেখেছি (পরীক্ষার জন্য `secrets` নামে একটা টেবিল বানিয়ে)। পেজের তালিকায় এলো:
+
+```text
+• রাফি
+• হ্যাকার
+• root@localhost
+• প্রশ্নপত্র-২০২৬
+```
+
+আক্রমণকারী জেনে গেল অ্যাপ `root` দিয়ে চলছে, আর অন্য টেবিলের গোপন তথ্য পড়ে ফেলল। `root` দিয়ে চলায় সে চাইলে পুরো সার্ভারের যেকোনো Database পড়তে পারত। এটাই **SQL Injection**, ওয়েবের সবচেয়ে পুরোনো আর এখনো সবচেয়ে প্রচলিত আক্রমণগুলোর একটা।
+
+<Note title="একটা প্রচলিত ভুল ধারণা">
+অনেক উদাহরণে দেখবে `'); DROP TABLE students; --`। PHP-র `mysqli::query()` একবারে একটাই SQL কমান্ড চালায়, তাই এই নির্দিষ্ট আক্রমণ এখানে syntax error দেয়, টেবিল মোছে না (আমরা পরীক্ষা করে দেখেছি)। কিন্তু ওপরের উদাহরণ দেখাচ্ছে, একটা কমান্ডের ভেতরেই যথেষ্ট ক্ষতি করা যায়। আর লগইন ফর্মে `' OR '1'='1` দিয়ে পাসওয়ার্ড ছাড়াই ঢোকা যায়। "আমার কোড `DROP` আটকায়" মানে নিরাপদ না।
+</Note>
+
+### সমাধান: Prepared Statement
+
+মূল সমস্যা হলো **কোড আর ডেটা একসাথে মিশে যাওয়া**। Prepared Statement-এ Query-র গঠন আগে আলাদাভাবে পাঠানো হয়, `?` চিহ্ন দিয়ে ফাঁকা জায়গা রেখে; তারপর ডেটা পাঠানো হয় আলাদা করে। MySQL ডেটাকে কখনো কোড হিসেবে পড়ে না, তাতে যত `'` বা `--` থাকুক।
+
+লেভেল ০-এর `index.php`, নিরাপদ রূপে:
+
+```php
+<?php
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);   // error হলে exception
+
+// root না, শুধু SELECT আর INSERT-এর অনুমতিওয়ালা User
+// পাসওয়ার্ড কোডে না, সার্ভারের Environment Variable-এ
+$db = new mysqli("localhost", "school_app", getenv("DB_PASS"), "school");
+$db->set_charset("utf8mb4");
+
+if (isset($_POST["name"])) {
+    $name = trim($_POST["name"]);
+    if ($name !== "" && mb_strlen($name) <= 100) {               // ইনপুট যাচাই
+        $stmt = $db->prepare("INSERT INTO students (name) VALUES (?)");
+        $stmt->bind_param("s", $name);                            // "s" = string
+        $stmt->execute();
+    }
+}
+?>
+<form method="post">
+  <input name="name" placeholder="তোমার নাম" maxlength="100" required>
+  <button>জমা দাও</button>
+</form>
+<ul>
+<?php
+$result = $db->query("SELECT name FROM students ORDER BY id");   // ইউজারের ইনপুট নেই, তাই নিরাপদ
+while ($row = $result->fetch_assoc()) {
+    echo "<li>" . htmlspecialchars($row["name"]) . "</li>";      // HTML-এ বসানোর আগে escape
+}
+?>
+</ul>
+```
+
+একই আক্রমণ এবার চালালে তালিকায় আসে আক্রমণের লেখাটাই, একটা সাধারণ (অদ্ভুত) নাম হিসেবে; কোনো গোপন তথ্য না। আর `O'Neil` নামটাও এখন ঠিকঠাক জমা হয়, লেভেল ০-এর বাগ মনস্টার ৪-ও মরে গেল। নিরাপত্তার চারটা স্তর একসাথে কাজ করছে:
+
+| স্তর | কী করে |
+| --- | --- |
+| Prepared Statement (`?`) | ডেটা কখনো কোড হয় না: Injection বন্ধ |
+| আলাদা User, Least Privilege | কিছু ফাঁক থেকে গেলেও ক্ষতি সীমিত (`secrets` পড়তেই পারবে না) |
+| ইনপুট যাচাই | ফাঁকা বা অতিরিক্ত লম্বা ইনপুট বাদ |
+| `htmlspecialchars` | ডেটাবেসের লেখা HTML-এ বসানোর সময় XSS আক্রমণ বন্ধ |
+
+এই চারটা মিলিয়ে বলে **Defense in Depth**: একটা দেয়াল ভাঙলেও পরেরটা দাঁড়িয়ে থাকে।
+
+<Remember>
+**ইউজারের দেওয়া কোনো কিছু কখনো সরাসরি SQL লেখার ভেতরে জোড়া দেবে না।** সবসময় Prepared Statement (PHP-তে `prepare` + `bind_param`, বা PDO; Node.js-এ `mysql2`-এর `execute(sql, [values])`; বেশির ভাগ ORM নিজেই এটা করে)। `addslashes()` বা নিজে `'` সরানোর চেষ্টা নিরাপদ না।
+</Remember>
+
+<BugMonster title="দুর্গের ফাটল">
+
+**১. অ্যাপ `root` দিয়ে চলা।** একটা Injection মানেই পুরো সার্ভার। অ্যাপের জন্য আলাদা User।
+
+**২. পাসওয়ার্ড কোডে লেখা আর GitHub-এ তোলা।** `.env` ফাইল বা সার্ভারের Environment Variable ব্যবহার করো, আর `.env`-কে `.gitignore`-এ রাখো।
+
+**৩. টেবিল বা Column-এর নাম Prepared Statement দিয়ে বসানোর চেষ্টা।** `?` শুধু **মানের** জন্য, নামের জন্য না (`ORDER BY ?` কাজ করবে না)। ইউজারকে সাজানোর Column বাছতে দিলে, অনুমোদিত নামের একটা তালিকা (Allowlist) থেকে মিলিয়ে নাও।
+
+**৪. `--routines` ছাড়া `mysqldump`।** Procedure, Function হারিয়ে যায়।
+
+**৫. Backup আর Database একই ডিস্কে।** ডিস্ক নষ্ট হলে দুটোই যাবে।
+
+**৬. `'user'@'%'` আর দুর্বল পাসওয়ার্ড।** ইন্টারনেট থেকে যে কেউ চেষ্টা করতে পারে। Host সীমিত রাখো, Firewall দিয়ে 3306 Port বাইরে থেকে বন্ধ রাখো।
+
+</BugMonster>
+
+<Quest id="1" title="রিপোর্ট দেখার User">
+`principal`@`localhost` নামে একটা User বানাও যিনি `school`-এর সব টেবিল শুধু পড়তে পারবেন। তারপর তাঁর অনুমতি দেখাও।
+
+<Solution>
+```sql
+CREATE USER 'principal'@'localhost' IDENTIFIED BY 'Pr1ncipal-Only-Read';
+GRANT SELECT ON school.* TO 'principal'@'localhost';
+SHOW GRANTS FOR 'principal'@'localhost';
+```
+</Solution>
+</Quest>
+
+<Quest id="2" title="Backup-এর মহড়া">
+`library` Database-এর Backup নাও, Database টা মুছে ফেলো, Restore করো, আর `SELECT COUNT(*) FROM loans` দিয়ে মিলিয়ে দেখো।
+
+<Solution>
+```bash
+mysqldump -u root -p --single-transaction --routines --triggers --default-character-set=utf8mb4 library > library_backup.sql
+mysql -u root -p -e "DROP DATABASE library; CREATE DATABASE library CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+mysql -u root -p library < library_backup.sql
+mysql -u root -p library -e "SELECT COUNT(*) FROM loans"
+```
+
+লেভেল ১৭-এর Trigger আর Procedure বানিয়ে থাকলে সেগুলোও ফিরে এসেছে কি না দেখো: `SHOW TRIGGERS;`।
+</Solution>
+</Quest>
+
+<Quest id="3" title="লগইনের ফাঁক">
+এই PHP কোডে কী সমস্যা, আর ইউজারনেমে `admin' -- ` লিখলে কী হবে? নিরাপদ রূপে লেখো।
+
+```php
+$sql = "SELECT * FROM users WHERE username = '$u' AND password = '$p'";
+```
+
+<Solution>
+`admin' -- ` দিলে Query হয় `... WHERE username = 'admin' -- ' AND password = '...'`। পাসওয়ার্ডের অংশ Comment হয়ে গেল, পাসওয়ার্ড ছাড়াই `admin` হিসেবে ঢোকা গেল। দ্বিতীয় সমস্যা: পাসওয়ার্ড সরাসরি টেবিলে রাখা, যেটা কখনোই করা উচিত না।
+
+```php
+$stmt = $db->prepare("SELECT id, password_hash FROM users WHERE username = ?");
+$stmt->bind_param("s", $u);
+$stmt->execute();
+$user = $stmt->get_result()->fetch_assoc();
+
+if ($user && password_verify($p, $user["password_hash"])) {
+    // লগইন সফল
+}
+```
+
+পাসওয়ার্ড রাখো `password_hash()` দিয়ে বানানো hash হিসেবে, যাচাই করো `password_verify()` দিয়ে। তাহলে Database চুরি হলেও আসল পাসওয়ার্ড কেউ পায় না।
+</Solution>
+</Quest>
+
+<Boss title="স্কুলের নিরাপত্তা নীতি">
+হেডস্যার একটা পূর্ণ নিরাপত্তা ব্যবস্থা চান। প্রতিটা চাহিদা SQL দিয়ে পূরণ করো:
+
+1. ওয়েবসাইট শুধু ছাত্রদের তালিকা পড়বে আর নতুন ছাত্র যোগ করবে।
+2. শিক্ষকরা সব পড়তে পারবেন, শুধু `marks`-এ নম্বর দিতে আর বদলাতে পারবেন। একটা Role দিয়ে।
+3. অফিস স্টাফ ছাত্রদের নাম, ক্লাস, শহর দেখবেন, কিন্তু ফোন আর GPA না।
+4. প্রতি রাতে Backup নেওয়ার জন্য একটা আলাদা User, যার শুধু Backup-এর জন্য দরকারি অনুমতি থাকবে।
+
+<Solution title="ইঙ্গিত ১">
+চারটা আলাদা User, প্রত্যেককে ঠিক যতটুকু দরকার (Least Privilege)। শিক্ষকদের জন্য আগে একটা Role বানাও, অনুমতি Role-কে দাও, তারপর Role-টা প্রত্যেক শিক্ষককে।
+</Solution>
+
+<Solution title="ইঙ্গিত ২">
+অফিস স্টাফ কিছু Column দেখবে, কিছু না: হয় শুধু সেই Column-গুলো নিয়ে একটা View বানিয়ে তাতে `SELECT` দাও, নয়তো Column ধরে `GRANT SELECT (name, class, city)`। Backup User-এর জন্য `mysqldump` যা লাগে: `SELECT`, `SHOW VIEW`, `TRIGGER`, `LOCK TABLES` ইত্যাদি, কিন্তু লেখার কোনো অনুমতি না।
+</Solution>
+
+<Solution>
+```sql
+-- ১. ওয়েবসাইট
+CREATE USER 'school_web'@'localhost' IDENTIFIED BY 'Web-Long-Random-Pass-1';
+GRANT SELECT, INSERT ON school.students TO 'school_web'@'localhost';
+
+-- ২. শিক্ষক Role
+CREATE ROLE IF NOT EXISTS 'teacher_role';
+GRANT SELECT ON school.* TO 'teacher_role';
+GRANT INSERT, UPDATE ON school.marks TO 'teacher_role';
+CREATE USER 'rumana'@'localhost' IDENTIFIED BY 'Rumana-Long-Random-2';
+GRANT 'teacher_role' TO 'rumana'@'localhost';
+SET DEFAULT ROLE 'teacher_role' TO 'rumana'@'localhost';
+
+-- ৩. অফিস: View দিয়ে
+CREATE OR REPLACE VIEW school.office_students AS
+SELECT id, name, class, section, city FROM school.students;
+CREATE USER 'office_staff'@'localhost' IDENTIFIED BY 'Office-Long-Random-3';
+GRANT SELECT ON school.office_students TO 'office_staff'@'localhost';
+
+-- ৪. Backup User
+CREATE USER 'backup'@'localhost' IDENTIFIED BY 'Backup-Long-Random-4';
+GRANT SELECT, SHOW VIEW, TRIGGER, LOCK TABLES, EVENT ON school.* TO 'backup'@'localhost';
+GRANT PROCESS, SHOW_ROUTINE ON *.* TO 'backup'@'localhost';
+```
+
+Backup User-এর অনুমতির কারণ: ডেটা পড়তে `SELECT`, View-এর সংজ্ঞা নিতে `SHOW VIEW`, Trigger নিতে `TRIGGER`, Lock নিতে `LOCK TABLES`। MySQL 8.0.21 থেকে `mysqldump` Tablespace-এর তথ্যের জন্য `PROCESS` চায়; সেটা না দিতে চাইলে `--no-tablespaces` যোগ করো।
+
+আর `SHOW_ROUTINE` (MySQL 8.0.20+) নিয়ে একটা ভয়ংকর সত্য, যা আমরা পরীক্ষা করে পেয়েছি: এই অনুমতি ছাড়া `mysqldump --routines` **কোনো error ছাড়াই** অন্যের বানানো Procedure আর Function বাদ দিয়ে দেয়, আর সফল বলে শেষ করে। Backup দেখতে ঠিক, কিন্তু Restore করলে Procedure নেই! তাই Backup ফাইলে `grep "PROCEDURE"` দিয়ে, বা একটা পরীক্ষামূলক Restore করে মিলিয়ে নাও। (MariaDB-তে অনুমতির নিয়ম আলাদা; সেখানে নিজের সংস্করণের ডকুমেন্টেশন দেখো।)
+
+শেষে প্রতিটা User হয়ে লগইন করে নিষিদ্ধ কাজের চেষ্টা করো (যেমন `office_staff` হয়ে `SELECT phone FROM students`)। প্রতিটা `ERROR 1142` মানে একটা দেয়াল ঠিকঠাক দাঁড়িয়ে আছে। রাজধানী জয়! 🏛️
+</Solution>
+</Boss>
+
+<Summary slug="level-19" />
+
+<Checkpoint questions={[
+  { q: "Least Privilege নীতির মানে কী?", options: ["সবাইকে কম পাসওয়ার্ড", "প্রত্যেককে শুধু কাজের জন্য ন্যূনতম দরকারি অনুমতি", "শুধু root-কে অনুমতি", "অনুমতি ছাড়াই সব"], answer: 1, why: "পাসওয়ার্ড চুরি হলেও ক্ষতি সীমিত থাকে।" },
+  { q: "SQL Injection বন্ধ করার সঠিক উপায়?", options: ["ইনপুট থেকে ' মুছে দেওয়া", "Prepared Statement (?) ব্যবহার", "root দিয়ে চালানো", "JavaScript দিয়ে যাচাই"], answer: 1, why: "ডেটা আলাদাভাবে পাঠালে MySQL তাকে কখনো কোড হিসেবে পড়ে না।" },
+  { q: "mysqldump-এ --routines কেন দরকার?", options: ["গতির জন্য", "Procedure আর Function-ও Backup-এ রাখতে", "বাংলার জন্য", "পাসওয়ার্ড লুকাতে"], answer: 1, why: "না দিলে লেভেল ১৭-এর Procedure/Function Backup-এ থাকে না।" },
+  { q: "'office'@'localhost' মানে কী?", options: ["office নামের Database", "office নামের User, যে শুধু একই কম্পিউটার থেকে ঢুকতে পারবে", "যেকোনো জায়গার office", "office নামের টেবিল"], answer: 1, why: "MySQL-এ User = নাম + Host।" },
+  { q: "ফোন নম্বর লুকিয়ে অফিসকে ছাত্রদের তালিকা দেখাতে সবচেয়ে ভালো উপায়?", options: ["phone Column মুছে ফেলা", "একটা View বানিয়ে শুধু সেটায় SELECT অনুমতি", "অফিসকে root দেওয়া", "Excel-এ কপি করে পাঠানো"], answer: 1, why: "View নির্দিষ্ট Column দেখায়, আর অনুমতি শুধু View-তে।" }
+]} />

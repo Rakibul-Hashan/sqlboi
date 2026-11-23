@@ -1,0 +1,216 @@
+<Mission>
+- পাঁচটা **Aggregate Function**: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`
+- অনেকগুলো Row থেকে একটা মাত্র উত্তর বের করা
+- `COUNT(*)` আর `COUNT(column)`-এর পার্থক্য
+- `NULL` থাকলে গড় কেন "ভুল" মনে হয়
+</Mission>
+
+লেভেল ৬-এর Function-গুলো প্রতিটা Row-এ আলাদা আলাদা কাজ করত: ১০টা Row দিলে ১০টা উত্তর। আজকের Function-গুলো আলাদা। এরা **সব Row মিলিয়ে একটা উত্তর** দেয়: "মোট কতজন?", "গড় কত?", "সবচেয়ে বেশি কত?"
+
+## COUNT: গোনা
+
+```sql
+SELECT COUNT(*) AS total,
+       COUNT(phone) AS has_phone,
+       COUNT(gpa) AS has_gpa,
+       COUNT(DISTINCT city) AS cities
+FROM students;
+```
+
+| total | has_phone | has_gpa | cities |
+| --- | --- | --- | --- |
+| 10 | 7 | 9 | 6 |
+
+- `COUNT(*)` সব Row গোনে, যা-ই থাকুক।
+- `COUNT(phone)` শুধু সেই Row গোনে যেখানে `phone` **`NULL` না**। তিনজনের ফোন নেই, তাই ৭।
+- `COUNT(DISTINCT city)` আলাদা আলাদা শহর গোনে।
+
+শর্ত দিয়েও গোনা যায়:
+
+```sql
+SELECT COUNT(*) FROM students WHERE city = 'ঢাকা';   -- 4
+```
+
+## SUM, AVG, MIN, MAX
+
+```sql
+SELECT SUM(gpa), AVG(gpa), MIN(gpa), MAX(gpa) FROM students;
+```
+
+| SUM(gpa) | AVG(gpa) | MIN(gpa) | MAX(gpa) |
+| --- | --- | --- | --- |
+| 37.65 | 4.183333 | 2.90 | 5.00 |
+
+`MIN` আর `MAX` শুধু সংখ্যায় না, তারিখ আর লেখাতেও চলে:
+
+```sql
+SELECT MIN(birth_date) AS oldest, MAX(birth_date) AS youngest FROM students;
+```
+
+| oldest | youngest |
+| --- | --- |
+| 2008-10-03 | 2011-07-02 |
+
+সবচেয়ে ছোট তারিখ মানে সবচেয়ে আগে জন্ম, অর্থাৎ সবচেয়ে বয়স্ক।
+
+## NULL আর গড়ের রহস্য
+
+ওপরের গড় 4.18। কিন্তু হাতে হিসাব করো: মোট 37.65, ছাত্র ১০ জন, তাহলে গড় 3.765 হওয়ার কথা না?
+
+না। **সব Aggregate Function (`COUNT(*)` ছাড়া) `NULL` উপেক্ষা করে।** ফারিহার GPA `NULL`, তাই `AVG` ভাগ করেছে ৯ দিয়ে: 37.65 ÷ 9 = 4.183। কোনটা "ঠিক", সেটা প্রশ্নের ওপর নির্ভর করে:
+
+```sql
+SELECT ROUND(AVG(gpa), 2) AS avg_gpa,
+       ROUND(AVG(IFNULL(gpa, 0)), 2) AS avg_with_zero
+FROM students;
+```
+
+| avg_gpa | avg_with_zero |
+| --- | --- |
+| 4.18 | 3.77 |
+
+- "যাদের রেজাল্ট এসেছে, তাদের গড়" → `AVG(gpa)` = 4.18 ✅
+- "রেজাল্ট না আসাকে শূন্য ধরে গড়" → 3.77। ফারিহা আসলে শূন্য পায়নি, তাই এখানে এটা ভুল হিসাব।
+
+<Remember>
+**`AVG`, `SUM`, `MIN`, `MAX`, `COUNT(column)` সবাই `NULL` বাদ দিয়ে হিসাব করে। শুধু `COUNT(*)` সব Row গোনে।** রিপোর্টে গড় দেখানোর সময় "কতজনের ওপর গড়" সেটাও (`COUNT(gpa)`) পাশে দেখানো ভালো অভ্যাস।
+</Remember>
+
+## শর্তসাপেক্ষে গোনা: একটা কৌশল
+
+MySQL-এ শর্ত সত্যি হলে `1`, মিথ্যা হলে `0` হয়। তাই `SUM`-এর ভেতরে শর্ত দিলে সেটা গোনার কাজ করে:
+
+```sql
+SELECT SUM(gpa >= 4.00) AS a_or_more,
+       SUM(gpa < 4.00) AS below
+FROM students;
+```
+
+| a_or_more | below |
+| --- | --- |
+| 6 | 3 |
+
+এক Query-তেই দুটো আলাদা গণনা। মোট ৯ (১০ না), কারণ ফারিহার `NULL`। এটা MySQL-এর বিশেষ সুবিধা; অন্য Database-এ এর জন্য লিখতে হয় `SUM(CASE WHEN gpa >= 4.00 THEN 1 ELSE 0 END)`, যেটা MySQL-এও চলে।
+
+## খালি টেবিলে কী হয়?
+
+| Function | কোনো Row না থাকলে |
+| --- | --- |
+| `COUNT(*)`, `COUNT(col)` | `0` |
+| `SUM`, `AVG`, `MIN`, `MAX` | `NULL` |
+
+তাই "আজকের মোট বিক্রি" দেখাতে `IFNULL(SUM(amount), 0)` লেখা নিরাপদ, নাহলে কোনো বিক্রি না হলে স্ক্রিনে `NULL` দেখাবে।
+
+<BugMonster title="হিসাবের ভুল">
+
+**১. Aggregate-এর সাথে সাধারণ Column।**
+
+```sql
+-- কে সর্বোচ্চ GPA পেয়েছে?
+SELECT name, MAX(gpa) FROM students;
+```
+
+MySQL 8 বলবে: `ERROR 1140: In aggregated query without GROUP BY, expression #1 of SELECT list contains nonaggregated column`। কারণ `MAX(gpa)` একটা উত্তর, কিন্তু `name` দশটা; কোন নামটা দেখাবে? (MariaDB-তে বা পুরোনো MySQL-এ এটা error না দিয়ে যেকোনো একটা এলোমেলো নাম দেখাতে পারে, যা আরও বিপজ্জনক।) সঠিক উপায় দুটো:
+
+```sql
+-- সহজ: সাজিয়ে প্রথমজন
+SELECT name, gpa FROM students ORDER BY gpa DESC LIMIT 1;
+
+-- নির্ভুল: সমান নম্বরে একাধিকজন থাকলেও সবাই আসবে (লেভেল ১২-এর Subquery)
+SELECT name, gpa FROM students WHERE gpa = (SELECT MAX(gpa) FROM students);
+```
+
+**২. `WHERE`-এ Aggregate।** `WHERE gpa > AVG(gpa)` চলে না, কারণ `WHERE` এক এক Row করে দেখে, তখনো গড় হিসাব হয়নি। এর সমাধান Subquery (লেভেল ১২)।
+
+**৩. `COUNT(column)` দিয়ে মোট সংখ্যা।** `COUNT(phone)` দিয়ে "মোট ছাত্র" গুনলে যাদের ফোন নেই তারা বাদ পড়বে। মোট Row-এর জন্য সবসময় `COUNT(*)`।
+
+**৪. `SUM` ফাঁকা হলে `NULL`।** ওপরের টেবিল দেখো; `IFNULL(SUM(...), 0)`।
+
+</BugMonster>
+
+<Quest id="1" title="ক্লাস ৮-এর হিসাব">
+ক্লাস ৮-এ কতজন, তাদের গড় GPA (২ দশমিকে), সর্বোচ্চ আর সর্বনিম্ন GPA।
+
+<Solution>
+```sql
+SELECT COUNT(*) AS students, ROUND(AVG(gpa), 2) AS avg_gpa,
+       MAX(gpa) AS best, MIN(gpa) AS lowest
+FROM students
+WHERE class = 8;
+```
+
+৪ জন, গড় 4.55, সর্বোচ্চ 5.00, সর্বনিম্ন 3.75।
+</Solution>
+</Quest>
+
+<Quest id="2" title="তথ্যের ঘাটতি">
+এক Query-তে দেখাও: মোট ছাত্র, কতজনের ফোন নেই, কতজনের GPA নেই।
+
+<Solution>
+```sql
+SELECT COUNT(*) AS total,
+       COUNT(*) - COUNT(phone) AS no_phone,
+       COUNT(*) - COUNT(gpa) AS no_gpa
+FROM students;
+```
+
+10, 3, 1। `SUM(phone IS NULL)` লিখলেও একই উত্তর আসবে।
+</Solution>
+</Quest>
+
+<Quest id="3" title="বয়সের পরিসর">
+সবচেয়ে বয়স্ক আর সবচেয়ে ছোট ছাত্রের বয়সের পার্থক্য কত দিন?
+
+<Solution>
+```sql
+SELECT DATEDIFF(MAX(birth_date), MIN(birth_date)) AS days_apart FROM students;
+```
+
+একটা Aggregate-এর ফলাফল আরেকটা Function-এর ভেতরে দেওয়া যায়।
+</Solution>
+</Quest>
+
+<Boss title="প্রধান শিক্ষকের ড্যাশবোর্ড">
+হেডস্যার একটা Query চান, যার **একটা লাইনেই** থাকবে:
+
+- মোট ছাত্র
+- ঢাকার ছাত্র কত শতাংশ (এক দশমিকে)
+- গড় GPA (যাদের এসেছে, দুই দশমিকে)
+- A+ (GPA 5.00) কয়জন
+- সর্বোচ্চ আর সর্বনিম্ন GPA-র পার্থক্য
+
+<Solution title="ইঙ্গিত ১">
+একটা লাইনই চাই, তাই `GROUP BY` লাগবে না; সব Aggregate একসাথে এক `SELECT`-এ।
+</Solution>
+
+<Solution title="ইঙ্গিত ২">
+শতাংশ বা সংখ্যা গোনার কৌশল: MySQL-এ `city = 'ঢাকা'` নিজেই ১ বা ০, তাই `SUM(city = 'ঢাকা')` দিলে ঢাকার ছাত্রসংখ্যা আসে। আর `AVG` নিজেই `NULL` বাদ দেয়।
+</Solution>
+
+<Solution>
+```sql
+SELECT COUNT(*) AS total,
+       ROUND(SUM(city = 'ঢাকা') * 100 / COUNT(*), 1) AS dhaka_pct,
+       ROUND(AVG(gpa), 2) AS avg_gpa,
+       SUM(gpa = 5.00) AS a_plus,
+       MAX(gpa) - MIN(gpa) AS gpa_range
+FROM students;
+```
+
+| total | dhaka_pct | avg_gpa | a_plus | gpa_range |
+| --- | --- | --- | --- | --- |
+| 10 | 40.0 | 4.18 | 1 | 2.10 |
+
+এখন যদি হেডস্যার বলেন "এই হিসাবটা প্রতিটা ক্লাসের জন্য আলাদা করে দাও"? তাহলে তিনবার `WHERE class = ...` লিখে চালাতে হবে। এক Query-তে সব ক্লাস একসাথে, সেটাই পরের লেভেলের জাদু: `GROUP BY`।
+</Solution>
+</Boss>
+
+<Summary slug="level-7" />
+
+<Checkpoint questions={[
+  { q: "১০ জনের মধ্যে ৩ জনের phone NULL। COUNT(phone) কত?", options: ["10", "7", "3", "NULL"], answer: 1, why: "COUNT(column) NULL বাদ দিয়ে গোনে।" },
+  { q: "AVG(gpa) হিসাবে NULL GPA-কে কী ধরা হয়?", options: ["0", "বাদ দেওয়া হয়", "গড় মান", "Error"], answer: 1, why: "Aggregate Function NULL উপেক্ষা করে, তাই ভাগ হয় শুধু যাদের মান আছে তাদের সংখ্যা দিয়ে।" },
+  { q: "কোনো Row না থাকলে SUM(amount) কী দেয়?", options: ["0", "NULL", "Error", "1"], answer: 1, why: "COUNT ছাড়া বাকি Aggregate খালি সেটে NULL দেয়; IFNULL দিয়ে 0 করো।" },
+  { q: "SELECT name, MAX(gpa) FROM students; MySQL 8-এ কী হয়?", options: ["সর্বোচ্চ GPA-র ছাত্রের নাম আসে", "ERROR 1140 (only_full_group_by)", "সব নাম আসে", "প্রথম ছাত্রের নাম আসে"], answer: 1, why: "একটা Aggregate উত্তরের পাশে দশটা নামের কোনটা বসবে, MySQL 8 সেটা অনুমান করতে রাজি না।" },
+  { q: "SUM(gpa >= 4.00) কী করে?", options: ["৪-এর বেশি GPA যোগ করে", "যাদের GPA 4 বা বেশি তাদের গোনে", "Error দেয়", "সব GPA যোগ করে"], answer: 1, why: "শর্ত সত্যি হলে 1, মিথ্যা হলে 0, তাই যোগফল = শর্ত পূরণকারীর সংখ্যা।" }
+]} />

@@ -1,0 +1,806 @@
+[
+  {
+    "id": "dbms",
+    "term": "DBMS",
+    "def": "Database Management System: যে সফটওয়্যার Database চালায়, যেমন MySQL, MariaDB, PostgreSQL।",
+    "level": "level-0"
+  },
+  {
+    "id": "mariadb",
+    "term": "MariaDB",
+    "def": "MySQL-এর আদি নির্মাতাদের একটা দলের বানানো প্রায় যমজ DBMS। XAMPP-এর ভেতরে এটাই থাকে।",
+    "level": "level-0"
+  },
+  {
+    "id": "phpmyadmin",
+    "term": "phpMyAdmin",
+    "def": "ব্রাউজার থেকে MySQL/MariaDB চালানোর একটা ওয়েব টুল; XAMPP-এর সাথে আসে।",
+    "level": "level-0"
+  },
+  {
+    "id": "xampp",
+    "term": "XAMPP",
+    "def": "Apache, PHP আর Database একসাথে ইনস্টল করার একটা ফ্রি প্যাকেজ; নিজের কম্পিউটারে \"ডেস্ক\" সাজানোর সহজ উপায়।",
+    "level": "level-0"
+  },
+  {
+    "id": "sql-injection",
+    "term": "SQL Injection",
+    "def": "ইউজারের ইনপুট সরাসরি SQL-এ জোড়া দিলে আক্রমণকারী Query-র অর্থ বদলে ফেলতে পারে। সমাধান: Prepared Statement।",
+    "level": "level-19"
+  },
+  {
+    "id": "data-type",
+    "term": "Data Type",
+    "def": "একটা Column-এ কী ধরনের মান বসবে: INT, DECIMAL, VARCHAR, DATE ইত্যাদি।",
+    "level": "level-1"
+  },
+  {
+    "id": "ddl",
+    "term": "DDL",
+    "def": "Data Definition Language: টেবিলের গঠন নিয়ে কাজ (CREATE, ALTER, DROP, TRUNCATE)।",
+    "level": "level-2"
+  },
+  {
+    "id": "dml",
+    "term": "DML",
+    "def": "Data Manipulation Language: টেবিলের ডেটা নিয়ে কাজ (SELECT, INSERT, UPDATE, DELETE)।",
+    "level": "level-2"
+  },
+  {
+    "id": "null",
+    "term": "NULL",
+    "def": "\"জানা নেই\"। শূন্য বা খালি লেখা না; খুঁজতে IS NULL লাগে, = NULL কখনো সত্যি হয় না।",
+    "level": "level-4"
+  },
+  {
+    "id": "alias",
+    "term": "Alias",
+    "def": "AS দিয়ে Column বা টেবিলকে দেওয়া সাময়িক নাম; শুধু সেই Query-র জন্য।",
+    "level": "level-3"
+  },
+  {
+    "id": "wildcard",
+    "term": "Wildcard",
+    "def": "LIKE-এর বিশেষ চিহ্ন: % মানে যেকোনো কিছু, _ মানে ঠিক একটা অক্ষর।",
+    "level": "level-4"
+  },
+  {
+    "id": "three-valued",
+    "term": "Three-Valued Logic",
+    "def": "SQL-এ শর্তের ফল তিন রকম: সত্য, মিথ্যা, আর NULL (জানা নেই)।",
+    "level": "level-5"
+  },
+  {
+    "id": "precedence",
+    "term": "Operator Precedence",
+    "def": "কোন অপারেটর আগে কাজ করে। AND সবসময় OR-এর আগে; সন্দেহ হলে বন্ধনী দাও।",
+    "level": "level-5"
+  },
+  {
+    "id": "mojibake",
+    "term": "Mojibake",
+    "def": "ভুল ক্যারেক্টার সেটে পড়া লেখা, যেমন à¦°à¦¾। সব জায়গায় utf8mb4 দিলে হয় না।",
+    "level": "level-6"
+  },
+  {
+    "id": "aggregate",
+    "term": "Aggregate Function",
+    "aliases": [
+      "Aggregate"
+    ],
+    "def": "অনেক Row থেকে একটা উত্তর দেওয়া Function: COUNT, SUM, AVG, MIN, MAX। COUNT(*) ছাড়া সবাই NULL উপেক্ষা করে।",
+    "level": "level-7"
+  },
+  {
+    "id": "execution-order",
+    "term": "Execution Order",
+    "def": "MySQL Query চালায় FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT ক্রমে।",
+    "level": "level-8"
+  },
+  {
+    "id": "constraint",
+    "term": "Constraint",
+    "def": "Database-এর দরজায় বসানো নিয়ম: NOT NULL, UNIQUE, CHECK, PRIMARY KEY, FOREIGN KEY, DEFAULT।",
+    "level": "level-9"
+  },
+  {
+    "id": "primary-key",
+    "term": "Primary Key",
+    "def": "প্রতিটা Row-এর অনন্য পরিচয়; NOT NULL + UNIQUE। প্রতি টেবিলে একটাই।",
+    "level": "level-9"
+  },
+  {
+    "id": "foreign-key",
+    "term": "Foreign Key",
+    "def": "অন্য টেবিলের Key-এর দিকে নির্দেশ করা Column; এমন মান ঢুকতে দেয় না যার Parent নেই।",
+    "level": "level-9"
+  },
+  {
+    "id": "composite-key",
+    "term": "Composite Key",
+    "def": "একাধিক Column মিলে গঠিত Key, যেমন marks(student_id, subject_id)।",
+    "level": "level-9"
+  },
+  {
+    "id": "referential-integrity",
+    "term": "Referential Integrity",
+    "def": "Foreign Key-র প্রতিটা মান হয় NULL, নয়তো Parent টেবিলে সত্যিই আছে: কোনো সন্তান এতিম না।",
+    "level": "level-9"
+  },
+  {
+    "id": "soft-delete",
+    "term": "Soft Delete",
+    "def": "Row সত্যি না মুছে is_active = 0 জাতীয় চিহ্ন দিয়ে \"মুছে ফেলা\" বোঝানো; ইতিহাস রক্ষা পায়।",
+    "level": "level-9"
+  },
+  {
+    "id": "join",
+    "term": "JOIN",
+    "def": "দুই বা তার বেশি টেবিলকে মিল থাকা Column দিয়ে জোড়া লাগানো।",
+    "level": "level-10",
+    "aliases": [
+      "INNER JOIN"
+    ]
+  },
+  {
+    "id": "cartesian",
+    "term": "Cartesian Product",
+    "def": "প্রতিটা Row-এর সাথে অন্য টেবিলের প্রতিটা Row-এর জোড়া (CROSS JOIN)। ON ভুলে গেলে এটাই হয়।",
+    "level": "level-10"
+  },
+  {
+    "id": "left-join",
+    "term": "LEFT JOIN",
+    "def": "বাঁ টেবিলের সব Row রাখে; ডানে মিল না থাকলে ডানের ঘর NULL।",
+    "level": "level-11"
+  },
+  {
+    "id": "anti-join",
+    "term": "Anti Join",
+    "def": "\"যাদের কিছু নেই\" খোঁজার কৌশল: LEFT JOIN ... WHERE ডান.key IS NULL, বা NOT EXISTS।",
+    "level": "level-11"
+  },
+  {
+    "id": "self-join",
+    "term": "Self Join",
+    "aliases": [
+      "SELF JOIN"
+    ],
+    "def": "একটা টেবিলকে দুটো আলাদা Alias দিয়ে নিজের সাথেই জোড়া, যেমন শিক্ষক আর তাঁর প্রধান।",
+    "level": "level-11"
+  },
+  {
+    "id": "subquery",
+    "term": "Subquery",
+    "def": "একটা Query-র ভেতরে আরেকটা Query; একটা মান, একটা তালিকা বা একটা টেবিল দিতে পারে।",
+    "level": "level-12"
+  },
+  {
+    "id": "correlated",
+    "term": "Correlated Subquery",
+    "def": "যে Subquery বাইরের Query-র Column ব্যবহার করে, তাই বাইরের প্রতিটা Row-এর জন্য আলাদা করে চলে।",
+    "level": "level-12"
+  },
+  {
+    "id": "derived-table",
+    "term": "Derived Table",
+    "def": "FROM-এর ভেতরের Subquery, অস্থায়ী টেবিলের মতো; MySQL-এ Alias দিতেই হয়।",
+    "level": "level-12"
+  },
+  {
+    "id": "union",
+    "term": "UNION",
+    "def": "দুই SELECT-এর ফলাফল একসাথে, ডুপ্লিকেট বাদে। UNION ALL ডুপ্লিকেট রাখে আর দ্রুত।",
+    "level": "level-12"
+  },
+  {
+    "id": "cte",
+    "term": "CTE",
+    "def": "Common Table Expression: WITH দিয়ে Query-র শুরুতে একটা Subquery-কে নাম দেওয়া; Recursive-ও হতে পারে।",
+    "level": "level-4-3",
+    "aliases": [
+      "WITH RECURSIVE"
+    ]
+  },
+  {
+    "id": "relation",
+    "term": "Relation",
+    "def": "Relational Model-এ টেবিলের নাম: Tuple-এর একটা সেট।",
+    "level": "level-13"
+  },
+  {
+    "id": "tuple",
+    "term": "Tuple",
+    "def": "Relational Model-এ Row-এর নাম।",
+    "level": "level-13"
+  },
+  {
+    "id": "attribute",
+    "term": "Attribute",
+    "def": "Relational Model-এ Column-এর নাম; ER Diagram-এ Entity-র বৈশিষ্ট্য।",
+    "level": "level-13"
+  },
+  {
+    "id": "super-key",
+    "term": "Super Key",
+    "def": "যে Attribute-সেট প্রতিটা Tuple অনন্যভাবে চেনায়; বাড়তি Attribute থাকতে পারে।",
+    "level": "level-13"
+  },
+  {
+    "id": "candidate-key",
+    "term": "Candidate Key",
+    "def": "ন্যূনতম Super Key: কোনো Attribute সরালেই অনন্যতা হারায়।",
+    "level": "level-13"
+  },
+  {
+    "id": "relational-algebra",
+    "term": "Relational Algebra",
+    "def": "Query-র গণিত: σ (Selection = WHERE), π (Projection = SELECT), ⋈ (Join), ∪, −, ×, ρ, ÷।",
+    "level": "level-13"
+  },
+  {
+    "id": "er-diagram",
+    "term": "ER Diagram",
+    "def": "Entity, Attribute আর Relationship দিয়ে Database-এর নকশা আঁকা।",
+    "level": "level-14"
+  },
+  {
+    "id": "cardinality",
+    "term": "Cardinality",
+    "def": "সম্পর্কে কয়টার সাথে কয়টা: ১:১, ১:N, M:N। (Relation-এর Row সংখ্যাকেও Cardinality বলে।)",
+    "level": "level-14"
+  },
+  {
+    "id": "weak-entity",
+    "term": "Weak Entity",
+    "def": "যে Entity নিজে চেনা যায় না, Owner-এর Key লাগে; যেমন ছাত্রের অভিভাবক।",
+    "level": "level-14"
+  },
+  {
+    "id": "junction",
+    "term": "Junction",
+    "def": "M:N সম্পর্ক রাখার জন্য মাঝের টেবিল, দুই পাশের Key নিয়ে; যেমন marks।",
+    "level": "level-14"
+  },
+  {
+    "id": "normalization",
+    "term": "Normalization",
+    "def": "টেবিল ভেঙে পুনরাবৃত্তি আর Anomaly দূর করার ধাপ: 1NF, 2NF, 3NF, BCNF।",
+    "level": "level-15"
+  },
+  {
+    "id": "fd",
+    "term": "Functional Dependency",
+    "def": "X → Y: X-এর মান জানলে Y-এর মান একটাই হবে।",
+    "level": "level-15"
+  },
+  {
+    "id": "anomaly",
+    "term": "Anomaly",
+    "def": "খারাপ ডিজাইনের অসুখ: Insertion, Update আর Deletion Anomaly।",
+    "level": "level-15"
+  },
+  {
+    "id": "1nf",
+    "term": "1NF",
+    "def": "প্রতিটা ঘরে একটা Atomic মান, কোনো Repeating Group নেই।",
+    "level": "level-15"
+  },
+  {
+    "id": "2nf",
+    "term": "2NF",
+    "def": "1NF + কোনো Partial Dependency নেই (Composite Key-এর অংশের ওপর নির্ভরতা)।",
+    "level": "level-15"
+  },
+  {
+    "id": "3nf",
+    "term": "3NF",
+    "def": "2NF + কোনো Transitive Dependency নেই (non-key → non-key)।",
+    "level": "level-15"
+  },
+  {
+    "id": "bcnf",
+    "term": "BCNF",
+    "def": "প্রতিটা Non-trivial Functional Dependency-র বাঁ পাশ একটা Super Key।",
+    "level": "level-15"
+  },
+  {
+    "id": "index",
+    "term": "Index",
+    "def": "বইয়ের নির্ঘণ্টের মতো আলাদা সাজানো গঠন (সাধারণত B+Tree), যা পুরো টেবিল না পড়েই খুঁজতে দেয়।",
+    "level": "level-16"
+  },
+  {
+    "id": "full-scan",
+    "term": "Full Table Scan",
+    "def": "প্রতিটা Row পড়ে খোঁজা; EXPLAIN-এ type: ALL।",
+    "level": "level-16"
+  },
+  {
+    "id": "explain",
+    "term": "EXPLAIN",
+    "def": "Query না চালিয়ে MySQL কীভাবে চালাত তা দেখায়; EXPLAIN ANALYZE সত্যিই চালিয়ে সময় মাপে।",
+    "level": "level-16"
+  },
+  {
+    "id": "covering-index",
+    "term": "Covering Index",
+    "def": "যে Index-এ Query-র দরকারি সব Column আছে, তাই মূল টেবিলে যেতে হয় না (Using index)।",
+    "level": "level-16"
+  },
+  {
+    "id": "selectivity",
+    "term": "Selectivity",
+    "def": "একটা Index কতটা ছাঁকতে পারে; আলাদা মান যত বেশি, Index তত কাজের।",
+    "level": "level-16"
+  },
+  {
+    "id": "optimizer",
+    "term": "Query Optimizer",
+    "def": "MySQL-এর যে অংশ খরচ হিসাব করে ঠিক করে Query কীভাবে চালাবে, কোন Index নেবে।",
+    "level": "level-16"
+  },
+  {
+    "id": "view",
+    "term": "View",
+    "def": "নাম দেওয়া সংরক্ষিত SELECT; নিজে ডেটা রাখে না, প্রতিবার নতুন করে চলে।",
+    "level": "level-17"
+  },
+  {
+    "id": "procedure",
+    "term": "Stored Procedure",
+    "aliases": [
+      "Procedure"
+    ],
+    "def": "সার্ভারে জমিয়ে রাখা কয়েক ধাপের কাজ; CALL দিয়ে চলে, IN/OUT প্যারামিটার নেয়।",
+    "level": "level-17"
+  },
+  {
+    "id": "stored-function",
+    "term": "Stored Function",
+    "def": "নিজের বানানো Function, একটা মান ফেরত দেয়, SELECT-এর ভেতরে ব্যবহার হয়।",
+    "level": "level-17"
+  },
+  {
+    "id": "trigger",
+    "term": "Trigger",
+    "def": "টেবিলে INSERT/UPDATE/DELETE হলে নিজে থেকে চলা কোড (BEFORE/AFTER, OLD/NEW)।",
+    "level": "level-17"
+  },
+  {
+    "id": "transaction",
+    "term": "Transaction",
+    "def": "\"হয় সব, নয় কিছুই না\": কয়েকটা কাজ একসাথে COMMIT, বা সব ROLLBACK।",
+    "level": "level-18",
+    "aliases": [
+      "START TRANSACTION"
+    ]
+  },
+  {
+    "id": "acid",
+    "term": "ACID",
+    "def": "Transaction-এর চার প্রতিশ্রুতি: Atomicity, Consistency, Isolation, Durability।",
+    "level": "level-18"
+  },
+  {
+    "id": "isolation",
+    "term": "Isolation Level",
+    "def": "একসাথে চলা Transaction কতটা আলাদা থাকবে; InnoDB-র ডিফল্ট REPEATABLE READ।",
+    "level": "level-18"
+  },
+  {
+    "id": "deadlock",
+    "term": "Deadlock",
+    "def": "দুই Transaction একে অন্যের Lock-এর জন্য চিরকাল অপেক্ষায়; InnoDB একটাকে Rollback করে দেয়।",
+    "level": "level-18"
+  },
+  {
+    "id": "innodb",
+    "term": "InnoDB",
+    "def": "MySQL-এর ডিফল্ট Storage Engine; Transaction, Foreign Key আর Row-Level Lock সমর্থন করে।",
+    "level": "level-18"
+  },
+  {
+    "id": "least-privilege",
+    "term": "Least Privilege",
+    "def": "প্রত্যেককে শুধু কাজের জন্য ন্যূনতম দরকারি অনুমতি।",
+    "level": "level-19"
+  },
+  {
+    "id": "prepared",
+    "term": "Prepared Statement",
+    "def": "Query-র গঠন আর ডেটা আলাদা পাঠানো (? চিহ্ন দিয়ে), তাই ডেটা কখনো কোড হয় না: SQL Injection বন্ধ।",
+    "level": "level-19"
+  },
+  {
+    "id": "upsert",
+    "term": "Upsert",
+    "def": "থাকলে আপডেট, না থাকলে ইনসার্ট: INSERT ... ON DUPLICATE KEY UPDATE।",
+    "level": "level-4-1"
+  },
+  {
+    "id": "window",
+    "term": "Window Function",
+    "def": "Row-গুলো না মিশিয়ে দলের ভেতরে হিসাব: ROW_NUMBER, RANK, SUM() OVER (...)।",
+    "level": "level-4-2"
+  },
+  {
+    "id": "division",
+    "term": "Relational Division",
+    "def": "\"সবগুলো\" ধরনের প্রশ্নের উত্তর (যেমন সব কোর্সে ভর্তি হয়েছে কে); RA-তে ÷, SQL-এ দুইবার NOT EXISTS বা COUNT মিলিয়ে।",
+    "level": "level-4-4"
+  },
+  {
+    "id": "pivot",
+    "term": "Pivot",
+    "def": "সারিকে কলামে ঘোরানো, যেমন প্রতি বিষয়ের নম্বর আলাদা Column-এ; SUM/MAX(CASE WHEN ...) দিয়ে।",
+    "level": "level-4-4"
+  },
+  {
+    "id": "database",
+    "term": "Database",
+    "aliases": [
+      "ডেটাবেস"
+    ],
+    "def": "গুছিয়ে রাখা ডেটার ভাণ্ডার, যেখান থেকে দ্রুত খোঁজা, বদলানো আর মোছা যায়। MySQL-এ একটা Database-এর ভেতরে অনেকগুলো Table থাকে।",
+    "level": "level-0",
+    "upto": "boss-1"
+  },
+  {
+    "id": "sql",
+    "term": "SQL",
+    "def": "Structured Query Language: Database-এর সাথে কথা বলার ভাষা। Table বানানো, ডেটা ঢোকানো, খোঁজা, সবই SQL-এ লেখা হয়।",
+    "level": "level-0",
+    "upto": "boss-1"
+  },
+  {
+    "id": "server",
+    "term": "Server",
+    "def": "যে প্রোগ্রাম সবসময় চালু থেকে অন্যদের অনুরোধের উত্তর দেয়। MySQL Server ডেটা রাখে; আমরা টার্মিনাল বা phpMyAdmin দিয়ে তাকে Query পাঠাই।",
+    "level": "level-0",
+    "upto": "boss-1"
+  },
+  {
+    "id": "query",
+    "term": "Query",
+    "aliases": [
+      "কুয়েরি"
+    ],
+    "def": "Database-কে দেওয়া একটা নির্দেশ বা প্রশ্ন, যেমন SELECT দিয়ে কিছু খোঁজা।",
+    "level": "level-3",
+    "upto": "boss-1"
+  },
+  {
+    "id": "table",
+    "term": "Table",
+    "aliases": [
+      "টেবিল"
+    ],
+    "def": "Row আর Column-এ সাজানো ডেটা, অনেকটা এক্সেলের শিটের মতো। প্রতিটা Table একটা বিষয়ের (যেমন ছাত্র) তথ্য রাখে।",
+    "level": "level-1",
+    "upto": "boss-1"
+  },
+  {
+    "id": "row",
+    "term": "Row",
+    "aliases": [
+      "Record"
+    ],
+    "def": "Table-এর একটা আড়াআড়ি লাইন: একজন ছাত্র, একটা অর্ডার। Record-ও বলে।",
+    "level": "level-1",
+    "upto": "boss-1"
+  },
+  {
+    "id": "column",
+    "term": "Column",
+    "aliases": [
+      "Field"
+    ],
+    "def": "Table-এর একটা খাড়া ঘর, যেখানে সবার একই ধরনের তথ্য থাকে (যেমন name, gpa)। প্রতিটা Column-এর একটা Data Type থাকে।",
+    "level": "level-1",
+    "upto": "boss-1"
+  },
+  {
+    "id": "auto-increment",
+    "term": "AUTO_INCREMENT",
+    "def": "নতুন Row ঢোকালে MySQL নিজেই পরের ক্রমিক নম্বর বসিয়ে দেয়; সাধারণত id Column-এ।",
+    "level": "level-1",
+    "codeOnly": true
+  },
+  {
+    "id": "varchar",
+    "term": "VARCHAR",
+    "def": "পরিবর্তনশীল দৈর্ঘ্যের লেখা। VARCHAR(100) মানে সর্বোচ্চ ১০০ অক্ষর; যতটুকু লেখা, প্রায় ততটুকুই জায়গা নেয়।",
+    "level": "level-1",
+    "codeOnly": true,
+    "upto": "boss-2"
+  },
+  {
+    "id": "utf8mb4",
+    "term": "utf8mb4",
+    "def": "MySQL-এর পূর্ণ Unicode Character Set; বাংলা থেকে ইমোজি সব রাখে। পুরোনো utf8 (আসলে utf8mb3) ইমোজির মতো ৪-বাইটের অক্ষর রাখতে পারে না।",
+    "level": "level-6",
+    "codeOnly": true
+  },
+  {
+    "id": "truncate",
+    "term": "TRUNCATE",
+    "def": "Table-এর সব Row একবারে মুছে দেয়, গঠন থাকে। WHERE চলে না, আর AUTO_INCREMENT আবার শুরু থেকে গোনে।",
+    "level": "level-2",
+    "codeOnly": true
+  },
+  {
+    "id": "where",
+    "term": "WHERE",
+    "def": "কোন Row-গুলো নেবে তার শর্ত। GROUP BY-এর আগে চলে, তাই এখানে SUM, COUNT-এর মতো Aggregate চলে না।",
+    "level": "level-3",
+    "codeOnly": true,
+    "upto": "boss-2"
+  },
+  {
+    "id": "order-by",
+    "term": "ORDER BY",
+    "def": "ফলাফল সাজানো: ASC (ছোট থেকে বড়, ডিফল্ট) বা DESC। না দিলে ক্রমের কোনো নিশ্চয়তা নেই।",
+    "level": "level-3",
+    "codeOnly": true,
+    "upto": "boss-2"
+  },
+  {
+    "id": "limit",
+    "term": "LIMIT",
+    "def": "ফলাফলের প্রথম কয়টা Row নেবে। LIMIT 5 OFFSET 10 মানে ১০টা বাদ দিয়ে পরের ৫টা। ORDER BY ছাড়া কোন ৫টা আসবে ঠিক থাকে না।",
+    "level": "level-3",
+    "codeOnly": true,
+    "upto": "boss-2"
+  },
+  {
+    "id": "distinct",
+    "term": "DISTINCT",
+    "def": "ফলাফলের হুবহু একই Row-গুলোর একটা রেখে বাকিগুলো বাদ দেয়।",
+    "level": "level-3",
+    "codeOnly": true,
+    "upto": "boss-2"
+  },
+  {
+    "id": "like",
+    "term": "LIKE",
+    "def": "লেখার নকশা মেলানো: % মানে যেকোনো সংখ্যক অক্ষর, _ মানে ঠিক একটা অক্ষর।",
+    "level": "level-4",
+    "codeOnly": true,
+    "upto": "boss-2"
+  },
+  {
+    "id": "between",
+    "term": "BETWEEN",
+    "def": "একটা সীমার ভেতরে, দুই প্রান্তসহ: BETWEEN 4 AND 5 মানে >= 4 আর <= 5।",
+    "level": "level-4",
+    "codeOnly": true,
+    "upto": "boss-2"
+  },
+  {
+    "id": "in",
+    "term": "IN",
+    "aliases": [
+      "NOT IN"
+    ],
+    "def": "তালিকার যেকোনোটার সমান: class IN (8, 9) মানে class = 8 OR class = 9।",
+    "level": "level-4",
+    "codeOnly": true,
+    "upto": "boss-2"
+  },
+  {
+    "id": "coalesce",
+    "term": "COALESCE",
+    "aliases": [
+      "IFNULL"
+    ],
+    "def": "তালিকার প্রথম যে মানটা NULL না, সেটা দেয়। NULL-এর জায়গায় বিকল্প বসাতে: COALESCE(phone, 'নেই')।",
+    "level": "level-4",
+    "codeOnly": true
+  },
+  {
+    "id": "case",
+    "term": "CASE",
+    "def": "SQL-এর if-else: CASE WHEN শর্ত THEN মান ... ELSE মান END।",
+    "level": "level-6",
+    "codeOnly": true
+  },
+  {
+    "id": "count-star",
+    "term": "COUNT(*)",
+    "def": "সব Row গোনে, NULL-সহ। COUNT(col) শুধু সেই Row গোনে যেখানে col NULL না।",
+    "level": "level-7",
+    "codeOnly": true
+  },
+  {
+    "id": "group-by",
+    "term": "GROUP BY",
+    "def": "একই মানের Row-গুলোকে এক দলে ভাগ করে। প্রতিটা দল ফলাফলে এক লাইন, যার ওপর Aggregate চলে।",
+    "level": "level-8",
+    "codeOnly": true
+  },
+  {
+    "id": "having",
+    "term": "HAVING",
+    "def": "GROUP BY-এর পরের ছাঁকনি: দলের হিসাবের ওপর শর্ত, যেমন HAVING COUNT(*) > 3।",
+    "level": "level-8",
+    "codeOnly": true
+  },
+  {
+    "id": "not-null",
+    "term": "NOT NULL",
+    "def": "এই Column খালি (NULL) রাখা যাবে না।",
+    "level": "level-9",
+    "codeOnly": true,
+    "upto": "boss-2"
+  },
+  {
+    "id": "unique",
+    "term": "UNIQUE",
+    "def": "এই Column-এ দুটো Row-এর মান এক হতে পারবে না (তবে NULL একাধিক থাকতে পারে)।",
+    "level": "level-9",
+    "codeOnly": true
+  },
+  {
+    "id": "default",
+    "term": "DEFAULT",
+    "def": "INSERT-এ মান না দিলে যে মান আপনা-আপনি বসে।",
+    "level": "level-9",
+    "codeOnly": true
+  },
+  {
+    "id": "check",
+    "term": "CHECK",
+    "def": "প্রতিটা Row-কে যে শর্ত মানতেই হবে, যেমন CHECK (score BETWEEN 0 AND 100)। MySQL 8.0.16 থেকে সত্যিই প্রয়োগ হয়।",
+    "level": "level-9",
+    "codeOnly": true
+  },
+  {
+    "id": "cascade",
+    "term": "ON DELETE CASCADE",
+    "def": "মূল Row মুছলে তার ওপর নির্ভরশীল (Foreign Key-ওয়ালা) Row-গুলোও আপনা-আপনি মুছে যায়।",
+    "level": "level-9",
+    "codeOnly": true
+  },
+  {
+    "id": "exists",
+    "term": "EXISTS",
+    "aliases": [
+      "NOT EXISTS"
+    ],
+    "def": "Subquery অন্তত একটা Row দিলে সত্য। NOT EXISTS তার উল্টো, আর NULL থাকলেও ঠিক কাজ করে; NOT IN-এর মতো ফাঁদে পড়ে না।",
+    "level": "level-12",
+    "codeOnly": true
+  },
+  {
+    "id": "delimiter",
+    "term": "DELIMITER",
+    "def": "mysql টার্মিনালে কমান্ডের শেষ-চিহ্ন সাময়িক বদলানো (যেমন //), যাতে Procedure-এর ভেতরের ; দেখে টার্মিনাল আগেভাগে থেমে না যায়।",
+    "level": "level-17",
+    "codeOnly": true
+  },
+  {
+    "id": "signal",
+    "term": "SIGNAL",
+    "def": "Procedure বা Trigger-এর ভেতর থেকে নিজের error ছোড়া: SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '...'।",
+    "level": "level-17",
+    "codeOnly": true
+  },
+  {
+    "id": "commit",
+    "term": "COMMIT",
+    "def": "Transaction-এর সব বদল স্থায়ী করা।",
+    "level": "level-18",
+    "codeOnly": true
+  },
+  {
+    "id": "rollback",
+    "term": "ROLLBACK",
+    "def": "Transaction-এর সব বদল বাতিল করে আগের অবস্থায় ফেরা।",
+    "level": "level-18",
+    "codeOnly": true
+  },
+  {
+    "id": "mysqldump",
+    "term": "mysqldump",
+    "def": "পুরো Database-কে একটা .sql ফাইলে Backup করার টুল। এটা টার্মিনালে চলে, mysql-এর ভেতরে না।",
+    "level": "level-19",
+    "codeOnly": true
+  },
+  {
+    "id": "grant",
+    "term": "GRANT",
+    "aliases": [
+      "REVOKE"
+    ],
+    "def": "User-কে অনুমতি দেওয়া; REVOKE দিয়ে কেড়ে নেওয়া হয়।",
+    "level": "level-19",
+    "codeOnly": true
+  },
+  {
+    "id": "insert-ignore",
+    "term": "INSERT IGNORE",
+    "def": "ডুপ্লিকেট (বা অন্য error) হলে Row-টা চুপচাপ বাদ দিয়ে warning দেয়, পুরো Query থামায় না।",
+    "level": "level-4-1",
+    "codeOnly": true
+  },
+  {
+    "id": "row-number",
+    "term": "ROW_NUMBER",
+    "def": "প্রতিটা Row-কে ১, ২, ৩... ক্রমিক নম্বর দেয়; সমান মানেও আলাদা নম্বর।",
+    "level": "level-4-2",
+    "codeOnly": true
+  },
+  {
+    "id": "rank",
+    "term": "RANK",
+    "def": "র‍্যাঙ্ক দেয়; সমান মানে একই নম্বর, তারপর ফাঁক রাখে (১, ২, ২, ৪)।",
+    "level": "level-4-2",
+    "codeOnly": true
+  },
+  {
+    "id": "dense-rank",
+    "term": "DENSE_RANK",
+    "def": "র‍্যাঙ্ক দেয়; সমান মানে একই নম্বর, কিন্তু ফাঁক রাখে না (১, ২, ২, ৩)।",
+    "level": "level-4-2",
+    "codeOnly": true
+  },
+  {
+    "id": "lag-lead",
+    "term": "LAG",
+    "aliases": [
+      "LEAD"
+    ],
+    "def": "আগের Row-এর মান (LAG) বা পরের Row-এর মান (LEAD), একই Window-এর ক্রমে।",
+    "level": "level-4-2",
+    "codeOnly": true
+  },
+  {
+    "id": "partition-by",
+    "term": "PARTITION BY",
+    "def": "Window Function-কে দলে ভাগ করে; প্রতিটা দলে হিসাব আলাদা, Row হারায় না।",
+    "level": "level-4-2",
+    "codeOnly": true
+  },
+  {
+    "id": "rollup",
+    "term": "WITH ROLLUP",
+    "def": "GROUP BY-এর ফলাফলে প্রতিটা দলের উপমোট আর শেষে সর্বমোট Row যোগ করে।",
+    "level": "level-4-4",
+    "codeOnly": true
+  },
+  {
+    "id": "gaps-islands",
+    "term": "Gaps and Islands",
+    "def": "টানা চলা অংশ (দ্বীপ) আর ফাঁক খোঁজার কৌশল: তারিখ থেকে ROW_NUMBER বিয়োগ করলে একই টানা অংশে একই ফল আসে।",
+    "level": "level-4-3"
+  },
+  {
+    "id": "vacuous",
+    "term": "শূন্যতার সত্য",
+    "aliases": [
+      "Vacuous Truth"
+    ],
+    "def": "যার কোনো ডেটাই নেই, তার জন্য \"একটাও না\" আর \"সবগুলো\" ধরনের শর্ত আপনা-আপনি সত্য। Vacuous Truth।",
+    "level": "level-4-4"
+  },
+  {
+    "id": "grain",
+    "term": "গ্রেইন",
+    "aliases": [
+      "Grain"
+    ],
+    "def": "উত্তরের প্রতিটা Row আসলে কী: একজন ক্রেতা, একটা অর্ডার, নাকি একটা ক্যাটাগরি। এটা ঠিক হলেই বোঝা যায় GROUP BY, DISTINCT বা Aggregate লাগবে কি না।",
+    "level": "level-5-1"
+  },
+  {
+    "id": "union-compatibility",
+    "term": "Union Compatibility",
+    "aliases": [
+      "Union Compatible"
+    ],
+    "def": "∪, ∩ আর − (বিয়োগ) চালাতে দুই পাশের Column-এর সংখ্যা আর ধরন এক হতে হয়। π cust_id, cname (customer) − π cust_id (orders) তাই অবৈধ।",
+    "level": "level-5-4"
+  }
+]

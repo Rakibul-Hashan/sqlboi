@@ -1,0 +1,41 @@
+// স্বয়ংক্রিয় নয় — নতুন লেভেলে এখানে একটা লাইন যোগ করো।
+import type { ComponentType } from "react";
+
+type Loader = () => Promise<{ default: ComponentType }>;
+
+export const content: Record<string, Loader> = {
+  "level-0": () => import("@/content/level-0.mdx"),
+  "level-1": () => import("@/content/level-1.mdx"),
+  "level-2": () => import("@/content/level-2.mdx"),
+  "level-3": () => import("@/content/level-3.mdx"),
+  "level-4": () => import("@/content/level-4.mdx"),
+  "level-5": () => import("@/content/level-5.mdx"),
+  "boss-1": () => import("@/content/boss-1.mdx"),
+  "level-6": () => import("@/content/level-6.mdx"),
+  "level-7": () => import("@/content/level-7.mdx"),
+  "level-8": () => import("@/content/level-8.mdx"),
+  "level-9": () => import("@/content/level-9.mdx"),
+  "level-10": () => import("@/content/level-10.mdx"),
+  "level-11": () => import("@/content/level-11.mdx"),
+  "level-12": () => import("@/content/level-12.mdx"),
+  "boss-2": () => import("@/content/boss-2.mdx"),
+  "level-13": () => import("@/content/level-13.mdx"),
+  "level-14": () => import("@/content/level-14.mdx"),
+  "level-15": () => import("@/content/level-15.mdx"),
+  "level-16": () => import("@/content/level-16.mdx"),
+  "level-17": () => import("@/content/level-17.mdx"),
+  "level-18": () => import("@/content/level-18.mdx"),
+  "level-19": () => import("@/content/level-19.mdx"),
+  "level-4-1": () => import("@/content/level-4-1.mdx"),
+  "level-4-2": () => import("@/content/level-4-2.mdx"),
+  "level-4-3": () => import("@/content/level-4-3.mdx"),
+  "level-4-4": () => import("@/content/level-4-4.mdx"),
+  "level-4-5": () => import("@/content/level-4-5.mdx"),
+  "level-5-1": () => import("@/content/level-5-1.mdx"),
+  "level-5-2": () => import("@/content/level-5-2.mdx"),
+  "level-5-3": () => import("@/content/level-5-3.mdx"),
+  "level-5-4": () => import("@/content/level-5-4.mdx"),
+  "level-5-5": () => import("@/content/level-5-5.mdx"),
+  "level-20": () => import("@/content/level-20.mdx"),
+  "bonus": () => import("@/content/bonus.mdx"),
+};
