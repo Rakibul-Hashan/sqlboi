@@ -120,6 +120,9 @@ function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+/** পাতার অন্য অংশ (যেমন ওপরের টেবিল) থেকে টেমপ্লেট খোলার সংকেত */
+export const PICK_EVENT = "tpl:pick";
+
 /* ================================================================== */
 /* ১. প্রশ্ন স্ক্যানার                                                  */
 /* ================================================================== */
@@ -772,13 +775,15 @@ function BreakdownSheet({ onOpenPattern }: { onOpenPattern: (id: string) => void
 export function TemplatesWorkbench() {
   const [active, setActive] = useState(patterns[0].id);
 
-  // ?p=division দিয়ে সরাসরি একটা টেমপ্লেট খোলা যায় (লেভেলের পাতা থেকে লিংক)
+  // ?p=division দিয়ে সরাসরি একটা টেমপ্লেট খোলা যায় (লেভেলের পাতা থেকে লিংক)।
+  // অন্য পাতা থেকে এলে Next.js নিজেও পাতার ওপরে স্ক্রল করে, তাই একটু পরে আমরা স্ক্রল করি,
+  // যাতে আমাদেরটাই শেষে খাটে।
   useEffect(() => {
     const p = new URLSearchParams(window.location.search).get("p");
-    if (p && patterns.some((x) => x.id === p)) {
-      setActive(p);
-      requestAnimationFrame(() => scrollTo("templates"));
-    }
+    if (!p || !patterns.some((x) => x.id === p)) return;
+    setActive(p);
+    const t = window.setTimeout(() => scrollTo("templates"), 120);
+    return () => window.clearTimeout(t);
   }, []);
 
   const choose = useCallback((id: string, scroll: boolean) => {
@@ -791,9 +796,18 @@ export function TemplatesWorkbench() {
   const pick = useCallback((id: string) => choose(id, true), [choose]);
   const tab = useCallback((id: string) => choose(id, false), [choose]);
 
+  useEffect(() => {
+    const on = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (patterns.some((x) => x.id === id)) pick(id);
+    };
+    window.addEventListener(PICK_EVENT, on);
+    return () => window.removeEventListener(PICK_EVENT, on);
+  }, [pick]);
+
   return (
     <>
-      <section aria-labelledby="scan" className="mt-14 scroll-mt-24">
+      <section aria-labelledby="scan" className="mt-14">
         <h2 id="scan" className="flex items-center gap-2 font-h2 text-3xl">
           <ScanSearch className="size-7" strokeWidth={2.4} aria-hidden />
           ১. প্রশ্নের সংকেত খোঁজো
@@ -804,7 +818,7 @@ export function TemplatesWorkbench() {
         </div>
       </section>
 
-      <section id="templates" aria-labelledby="tpl" className="mt-16 scroll-mt-24">
+      <section id="templates" aria-labelledby="tpl" className="mt-16">
         <h2 id="tpl" className="flex items-center gap-2 font-h2 text-3xl">
           <Wand2 className="size-7" strokeWidth={2.4} aria-hidden />
           ২. টেমপ্লেটে নাম বসাও
@@ -818,7 +832,7 @@ export function TemplatesWorkbench() {
         </div>
       </section>
 
-      <section aria-labelledby="sheet" className="mt-16 scroll-mt-24">
+      <section aria-labelledby="sheet" className="mt-16">
         <h2 id="sheet" className="flex items-center gap-2 font-h2 text-3xl">
           <ArrowDown className="size-7" strokeWidth={2.4} aria-hidden />
           ৩. প্রশ্ন ভাঙার ছক

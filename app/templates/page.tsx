@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { TemplatesWorkbench } from "@/components/templates/Workbench";
-import { patterns } from "@/lib/templates";
+import { TriggerTable } from "@/components/templates/TriggerTable";
 
 export const metadata: Metadata = {
   title: "প্রশ্ন ভাঙার টেমপ্লেট",
@@ -54,30 +54,7 @@ export default function TemplatesPage() {
           ))}
         </ol>
 
-        <div className="mt-6 overflow-x-auto rounded-[14px] border-[3px] border-ink bg-card shadow-[var(--shadow-brut-sm)]">
-          <table className="w-full border-collapse text-[1.02rem] leading-relaxed">
-            <thead className="bg-yellow-soft">
-              <tr>
-                <th className="border-b-[2.5px] border-ink px-4 py-2 text-left font-h3">প্রশ্নে এই শব্দ</th>
-                <th className="border-b-[2.5px] border-ink px-4 py-2 text-left font-h3">টেমপ্লেট</th>
-                <th className="border-b-[2.5px] border-ink px-4 py-2 text-left font-h3">প্রতি Row-তে</th>
-              </tr>
-            </thead>
-            <tbody>
-              {patterns.map((p) => (
-                <tr key={p.id} className="border-b-2 border-grid last:border-0">
-                  <td className="px-4 py-2 font-code text-[0.92rem]">{p.triggers.join(" · ")}</td>
-                  <td className="px-4 py-2">
-                    <Link href={`/templates?p=${p.id}`} className="font-h3 underline decoration-2 underline-offset-4 hover:bg-blue-soft">
-                      {p.title}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2 text-[0.95rem]">{p.grain}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <TriggerTable />
       </section>
 
       <TemplatesWorkbench />
