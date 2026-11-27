@@ -13,13 +13,21 @@ export const DB_INFO: Record<DbName, { label: string; tables: string[] }> = {
   "q4-emp": { label: "Emp আর Dept", tables: ["Emp", "Dept"] },
 };
 
+export const englishDatabaseLabels: Record<DbName, string> = {
+  "join-shop": "Join practice shop",
+  "q1-course": "Course registration",
+  "q2-staff": "Staff and branches",
+  "q3-shop": "Online shop",
+  "q4-emp": "Employees and departments",
+};
+
 /* ---------- ফলাফল দেখানো ---------- */
 
 function ResultTable({ columns, rows }: { columns: string[]; rows: unknown[][] }) {
   // যে Column-এর সব মান সংখ্যা (বা NULL), তার শিরোনামও ডানে, যাতে সংখ্যার ঠিক ওপরে বসে
   const numeric = columns.map((_, j) => rows.some((r) => typeof r[j] === "number") && rows.every((r) => r[j] === null || typeof r[j] === "number"));
   return (
-    <div className="max-h-[26rem] overflow-auto rounded-lg border-[2.5px] border-ink bg-card">
+    <div tabIndex={0} className="max-h-[min(26rem,55dvh)] max-w-full overflow-auto overscroll-x-contain rounded-lg border-[2.5px] border-ink bg-card">
       <table className="w-full border-collapse font-code text-[0.9rem] leading-relaxed xl:text-[0.98rem]">
         <thead className="sticky top-0 bg-yellow-soft">
           <tr>
@@ -49,42 +57,44 @@ function ResultTable({ columns, rows }: { columns: string[]; rows: unknown[][] }
   );
 }
 
-export function ResultPanel({ out, onClose }: { out: RunOutput; onClose?: () => void }) {
-  const ms = out.ms < 1 ? "<১" : toBn(Math.round(out.ms));
+export function ResultPanel({ out, onClose, english = false }: { out: RunOutput; onClose?: () => void; english?: boolean }) {
+  const number = english ? String : toBn;
+  const ms = out.ms < 1 ? `<${number(1)}` : number(Math.round(out.ms));
   return (
     <div className="mt-3 space-y-3" aria-live="polite">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span className="font-h3">
-          {out.error ? "Error" : out.sets.length ? "ফলাফল" : "চলেছে"}
+          {out.error ? "Error" : out.sets.length ? (english ? "Results" : "ফলাফল") : (english ? "Done" : "চলেছে")}
           <span className="ml-2 font-body text-muted">
-            {toBn(out.statements)}টা স্টেটমেন্ট · {ms} ms
+            {english ? `${out.statements} statements` : `${toBn(out.statements)}টা স্টেটমেন্ট`} · {ms} ms
           </span>
         </span>
         {onClose && (
           <button type="button" onClick={onClose} className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-h3 text-xs hover:bg-yellow-soft">
-            <X className="size-3.5" strokeWidth={2.6} aria-hidden /> বন্ধ
+            <X className="size-3.5" strokeWidth={2.6} aria-hidden /> {english ? "Close" : "বন্ধ"}
           </button>
         )}
       </div>
 
       {out.sets.map((s, i) => (
         <div key={i} className="space-y-1.5">
-          {out.sets.length > 1 && <p className="font-h3 text-xs text-muted">ফলাফল {toBn(i + 1)}</p>}
+          {out.sets.length > 1 && <p className="font-h3 text-xs text-muted">{english ? "Result" : "ফলাফল"} {number(i + 1)}</p>}
           {s.rows.length ? (
             <ResultTable columns={s.columns} rows={s.rows} />
           ) : (
             <div className="rounded-lg border-[2.5px] border-dashed border-ink bg-paper px-3 py-2 text-sm">
-              <span className="font-code text-xs text-muted">{s.columns.join(" | ")}</span>
-              <p className="mt-1">কোনো Row আসেনি (০টা Row)। প্রশ্নের শর্ত মানে এমন কেউ নেই, নয়তো শর্তে ভুল আছে।</p>
+              <span className="font-code text-xs text-muted [overflow-wrap:anywhere]">{s.columns.join(" | ")}</span>
+              <p className="mt-1">{english ? "No rows matched the query." : "কোনো Row আসেনি (০টা Row)। প্রশ্নের শর্ত মানে এমন কেউ নেই, নয়তো শর্তে ভুল আছে।"}</p>
             </div>
           )}
-          {s.rows.length > 0 && <p className="text-right text-xs text-muted">{toBn(s.rows.length)}টা Row</p>}
+          {s.rows.length > 0 && <p className="text-right text-xs text-muted">{english ? `${s.rows.length} rows` : `${toBn(s.rows.length)}টা Row`}</p>}
         </div>
       ))}
 
       {!out.error && out.sets.length === 0 && (
         <p className="rounded-lg border-[2.5px] border-ink bg-green-soft px-3 py-2 text-sm">
-          ঠিকঠাক চলেছে, তবে কোনো টেবিল ফেরত আসেনি (যেমন <code>CREATE VIEW</code>)। দেখতে হলে নিচে একটা <code>SELECT</code> যোগ করো।
+          {english ? <>The statement ran successfully and returned no result set. Add a <code>SELECT</code> to inspect the data.</> :
+            <>ঠিকঠাক চলেছে, তবে কোনো টেবিল ফেরত আসেনি (যেমন <code>CREATE VIEW</code>)। দেখতে হলে নিচে একটা <code>SELECT</code> যোগ করো।</>}
         </p>
       )}
 
@@ -151,22 +161,13 @@ function Editor({
           e.preventDefault();
           onRun();
         }
-        // Tab চাপলে ফোকাস না সরে দুই স্পেস বসুক
-        if (e.key === "Tab" && !e.shiftKey) {
-          e.preventDefault();
-          const t = e.currentTarget;
-          const { selectionStart: a, selectionEnd: b } = t;
-          const next = value.slice(0, a) + "  " + value.slice(b);
-          onChange(next);
-          requestAnimationFrame(() => t.setSelectionRange(a + 2, a + 2));
-        }
       }}
       rows={rows}
       spellCheck={false}
       autoCapitalize="off"
       autoComplete="off"
       autoCorrect="off"
-      className="block w-full resize-y rounded-lg border-[2.5px] border-ink bg-card px-3 py-2.5 font-code text-[0.95rem] leading-relaxed outline-none xl:text-[1.02rem] focus-visible:ring-4 focus-visible:ring-blue/40"
+      className="block w-full min-w-0 resize-y rounded-lg border-[2.5px] border-ink bg-card px-3 py-2.5 font-code text-[max(16px,0.95rem)] leading-relaxed outline-none xl:text-[1.02rem] focus-visible:ring-4 focus-visible:ring-blue/40"
     />
   );
 }
@@ -174,7 +175,7 @@ function Editor({
 /* ---------- কোড ব্লকের নিচের "চালাও" ---------- */
 
 /** প্রতিটা চালানো নতুন Database-এ, যাতে উত্তর সবসময় বইয়ের সাথে মেলে */
-export function SqlRunner({ db, code }: { db: DbName; code: string }) {
+export function SqlRunner({ db, code, english = false }: { db: DbName; code: string; english?: boolean }) {
   const [out, setOut] = useState<RunOutput | null>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -189,13 +190,16 @@ export function SqlRunner({ db, code }: { db: DbName; code: string }) {
         database = await freshDatabase(db);
         setOut(runOn(database, sql));
       } catch (e) {
-        setOut({ sets: [], statements: 0, ms: 0, error: `ইঞ্জিন চালু হয়নি: ${e instanceof Error ? e.message : String(e)}\n→ ইন্টারনেট সংযোগ দেখে পাতা রিলোড করো।` });
+        const message = e instanceof Error ? e.message : String(e);
+        const error = english ? `Could not start the SQL engine: ${message}\nReload the page to try again.` :
+          `ইঞ্জিন চালু হয়নি: ${message}\n→ ইন্টারনেট সংযোগ দেখে পাতা রিলোড করো।`;
+        setOut({ sets: [], statements: 0, ms: 0, error });
       } finally {
         database?.close();
         setBusy(false);
       }
     },
-    [db]
+    [db, english]
   );
 
   return (
@@ -203,39 +207,39 @@ export function SqlRunner({ db, code }: { db: DbName; code: string }) {
       <div className="flex flex-wrap items-center gap-2">
         <Btn primary onClick={() => run(editing ? draft : code)} disabled={busy}>
           {busy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <Play className="size-4 fill-ink" strokeWidth={2.4} aria-hidden />}
-          {editing ? "বদলানোটা চালাও" : "চালাও"}
+          {english ? (editing ? "Run edited SQL" : "Run") : (editing ? "বদলানোটা চালাও" : "চালাও")}
         </Btn>
         {editing ? (
           <>
-            <Btn onClick={() => setDraft(code)} label="আসল কোডে ফেরত যাও">
-              <RotateCcw className="size-4" strokeWidth={2.4} aria-hidden /> আসল কোড
+            <Btn onClick={() => setDraft(code)} label={english ? "Restore original SQL" : "আসল কোডে ফেরত যাও"}>
+              <RotateCcw className="size-4" strokeWidth={2.4} aria-hidden /> {english ? "Restore SQL" : "আসল কোড"}
             </Btn>
             <Btn onClick={() => setEditing(false)}>
-              <X className="size-4" strokeWidth={2.4} aria-hidden /> এডিটর বন্ধ
+              <X className="size-4" strokeWidth={2.4} aria-hidden /> {english ? "Close editor" : "এডিটর বন্ধ"}
             </Btn>
           </>
         ) : (
           <Btn onClick={() => setEditing(true)}>
-            <Pencil className="size-4" strokeWidth={2.4} aria-hidden /> বদলে দেখো
+            <Pencil className="size-4" strokeWidth={2.4} aria-hidden /> {english ? "Edit SQL" : "বদলে দেখো"}
           </Btn>
         )}
         <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted">
           <Database className="size-3.5" strokeWidth={2.4} aria-hidden />
-          {DB_INFO[db].label}
+          {english ? englishDatabaseLabels[db] : DB_INFO[db].label}
         </span>
       </div>
 
       {editing && (
         <div className="mt-3">
           <label htmlFor={editorId} className="sr-only">
-            SQL এডিটর
+            {english ? "SQL editor" : "SQL এডিটর"}
           </label>
           <Editor id={editorId} value={draft} onChange={setDraft} onRun={() => run(draft)} />
-          <p className="mt-1 text-xs text-muted">Ctrl + Enter চাপলেও চলে। প্রতিবার নতুন, ভরা Database-এ চলে; কিছু মুছলেও আসল ডেটা নষ্ট হবে না।</p>
+          <p className="mt-1 text-xs text-muted">{english ? "Press Ctrl + Enter to run. Each run starts with a fresh copy of the sample database." : "Ctrl + Enter চাপলেও চলে। প্রতিবার নতুন, ভরা Database-এ চলে; কিছু মুছলেও আসল ডেটা নষ্ট হবে না।"}</p>
         </div>
       )}
 
-      {out && <ResultPanel out={out} onClose={() => setOut(null)} />}
+      {out && <ResultPanel out={out} onClose={() => setOut(null)} english={english} />}
     </div>
   );
 }

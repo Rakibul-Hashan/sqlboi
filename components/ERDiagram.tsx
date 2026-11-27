@@ -53,7 +53,7 @@ function Card({ x, y, t }: { x: number; y: number; t: string }) {
 
 export function ERDiagram() {
   return (
-    <figure className="brut-sm overflow-x-auto bg-card p-3">
+    <figure tabIndex={0} className="brut-sm max-w-full overflow-x-auto overscroll-x-contain bg-card p-3">
       <svg viewBox="0 0 940 490" className="mx-auto block w-full min-w-[640px]" role="img" aria-label="স্কুলের ER Diagram: Student, Subject, Teacher, Guardian">
         <g transform="translate(70,12)">
         {/* সম্পর্কের রেখা */}

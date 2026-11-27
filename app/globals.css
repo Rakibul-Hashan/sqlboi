@@ -62,7 +62,8 @@
     font-family: var(--font-body);
     font-synthesis: none; /* ফন্টগুলোর আসল Bold নেই */
     -webkit-text-size-adjust: 100%;
-    scroll-padding-top: 5.5rem;
+    --site-header-height: calc(4rem + 3px);
+    scroll-padding-top: calc(var(--site-header-height) + 1rem);
     background-color: var(--color-paper);
   }
   /* লেখার আকার: হেডারের অ−/অ+ বোতাম <html data-text>-এ লেখে; সব মাপ rem-এ, তাই পুরো পাতা একসাথে বড়-ছোট হয় */
@@ -79,6 +80,26 @@
     background-size: 28px 28px;
   }
   b, strong, th, h1, h2, h3, h4, h5, h6 { font-weight: 400; }
+  [lang="en"] {
+    --font-body: "Lexend", system-ui, sans-serif;
+    --font-story: var(--font-body);
+    --font-deco: "Oleo Script", Georgia, serif;
+    --font-h1: "Oleo Script", Georgia, serif;
+    --font-h2: "Paprika", Georgia, serif;
+    --font-h3: "Kite One", system-ui, sans-serif;
+    font-family: var(--font-body);
+  }
+  html[lang="en"] [lang="bn"] {
+    --font-body: var(--font-alinur), "Noto Sans Bengali", system-ui, sans-serif;
+    --font-story: var(--font-mustafa), var(--font-alinur), serif;
+    --font-deco: var(--font-upohar), var(--font-alinur), sans-serif;
+    --font-h1: var(--font-mahfuj), var(--font-alinur), serif;
+    --font-h2: var(--font-titir), var(--font-alinur), serif;
+    --font-h3: var(--font-mayukh), var(--font-alinur), sans-serif;
+    font-family: var(--font-body);
+  }
+  :lang(en) :is(strong, b) { font-weight: 650; }
+  :lang(en) :is(h1, h2, h3) { overflow-wrap: anywhere; }
   ::selection { background: var(--color-yellow); color: var(--color-ink); }
   :focus-visible {
     outline: 3px solid var(--color-blue);
@@ -96,6 +117,17 @@
 }
 
 @layer components {
+  @media (min-width: 80rem) and (min-height: 42rem) {
+    .sql-workbench-preview {
+      position: sticky;
+      top: calc(var(--site-header-height) + 1rem);
+      max-height: calc(100dvh - var(--site-header-height) - 2rem);
+      align-self: start;
+      overflow-y: auto;
+      padding: 0 0.25rem 0.5rem 0;
+    }
+  }
+
   /* মোটা দাগ + শক্ত ছায়ার কার্ড */
   .brut {
     border: 3px solid var(--color-ink);
@@ -142,7 +174,11 @@
   }
 
   /* বইয়ের লেখা (MDX) */
-  .prose-boi { max-width: 62rem; }
+  .prose-boi {
+    min-width: 0;
+    max-width: 62rem;
+    overflow-wrap: anywhere;
+  }
   /* বড় পর্দায় মূল লেখা একটু বড়, যাতে চওড়া লাইনেও পড়তে আরাম লাগে */
   @media (min-width: 768px) { .prose-boi { font-size: 1.1875rem; } }
   @media (min-width: 1280px) { .prose-boi { font-size: 1.25rem; line-height: 1.9; } }
@@ -204,7 +240,9 @@
     overflow-wrap: anywhere;
   }
   .prose-boi .table-wrap {
+    max-width: 100%;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
     border: 3px solid var(--color-ink);
     border-radius: 14px;
     background: var(--color-card);

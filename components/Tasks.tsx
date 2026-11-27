@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { BOSS_XP, QUEST_XP, useProgress } from "@/lib/progress";
 import { toBn } from "@/lib/levels";
 import { useLevel } from "./LevelContext";
+import { useEnglish } from "./ReadingLanguage";
 
 interface TaskProps {
   id: string;
@@ -14,12 +15,13 @@ interface TaskProps {
 }
 
 function DoneToggle({ taskKey, xp, label }: { taskKey: string; xp: number; label: string }) {
+  const english = useEnglish();
   const { progress, toggleTask } = useProgress();
   const done = Boolean(progress.tasks[taskKey]);
 
   function onClick() {
     toggleTask(taskKey);
-    if (!done) toast(`+${toBn(xp)} XP`, { description: "দারুণ! খাতায় টিক পড়ল।" });
+    if (!done) toast(`+${english ? xp : toBn(xp)} XP`, { description: english ? "Practice completed." : "দারুণ! খাতায় টিক পড়ল।" });
   }
 
   return (
@@ -46,7 +48,7 @@ function DoneToggle({ taskKey, xp, label }: { taskKey: string; xp: number; label
           </svg>
         )}
       </span>
-      {done ? `শেষ! +${toBn(xp)} XP` : `${label} (+${toBn(xp)} XP)`}
+      {done ? (english ? `Completed · +${xp} XP` : `শেষ! +${toBn(xp)} XP`) : `${label} (+${english ? xp : toBn(xp)} XP)`}
     </button>
   );
 }
@@ -67,31 +69,32 @@ export function Quest({ id, title, children }: TaskProps) {
 }
 
 const TIERS = {
-  easy: { label: "সহজ", sticker: "bg-green", card: "bg-card", boss: false },
-  medium: { label: "মাঝারি", sticker: "bg-yellow", card: "bg-card", boss: false },
-  hard: { label: "কঠিন", sticker: "bg-orange", card: "bg-orange-soft", boss: true },
-  boss: { label: "বস", sticker: "bg-purple", card: "bg-purple-soft", boss: true },
+  easy: { label: "সহজ", en: "Easy", sticker: "bg-green", card: "bg-card", boss: false },
+  medium: { label: "মাঝারি", en: "Medium", sticker: "bg-yellow", card: "bg-card", boss: false },
+  hard: { label: "কঠিন", en: "Hard", sticker: "bg-orange", card: "bg-orange-soft", boss: true },
+  boss: { label: "বস", en: "Boss", sticker: "bg-purple", card: "bg-purple-soft", boss: true },
 } as const;
 
 export type ChallengeTier = keyof typeof TIERS;
 
 /** প্র্যাকটিস অ্যারেনার প্রশ্ন: কঠিন আর বস স্তরে বসের সমান XP */
-export function Challenge({ id, tier, title, children }: TaskProps & { tier: ChallengeTier }) {
+export function Challenge({ id, tier, title, children, anchorPrefix = "q" }: TaskProps & { tier: ChallengeTier; anchorPrefix?: string }) {
+  const english = useEnglish();
   const { slug } = useLevel();
   const t = TIERS[tier];
   const key = t.boss ? `${slug}:boss-${id}` : `${slug}:quest-${id}`;
   return (
-    <section id={`q-${id}`} className={`brut scroll-mt-24 p-5 sm:p-6 ${t.card}`} aria-label={`প্রশ্ন ${id}: ${title}`}>
+    <section id={`${anchorPrefix}-${id}`} className={`brut scroll-mt-24 p-5 sm:p-6 ${t.card}`} aria-label={english ? `Question ${id}: ${title}` : `প্রশ্ন ${id}: ${title}`}>
       <div className="flex flex-wrap items-center gap-2">
         <span className={`brut-sm inline-flex -rotate-2 items-center gap-1.5 px-2.5 py-0.5 font-h3 text-sm ${t.sticker}`}>
           {t.boss ? <Swords className="size-4" strokeWidth={2.4} aria-hidden /> : <Hammer className="size-4" strokeWidth={2.4} aria-hidden />}
-          {t.label}
+          {english ? t.en : t.label}
         </span>
-        <span className="font-h3 text-sm text-ink/70">প্রশ্ন {toBn(id)}</span>
+        <span className="font-h3 text-sm text-ink/70">{english ? `Question ${id}` : `প্রশ্ন ${toBn(id)}`}</span>
       </div>
       <h4 className="mt-3 font-h3 text-xl">{title}</h4>
       <div className="box-body mt-3 space-y-3">{children}</div>
-      <DoneToggle taskKey={key} xp={t.boss ? BOSS_XP : QUEST_XP} label="সমাধান করেছি" />
+      <DoneToggle taskKey={key} xp={t.boss ? BOSS_XP : QUEST_XP} label={english ? "Mark solved" : "সমাধান করেছি"} />
     </section>
   );
 }

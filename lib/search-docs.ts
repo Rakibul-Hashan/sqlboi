@@ -5,8 +5,11 @@ import path from "node:path";
 import GithubSlugger from "github-slugger";
 import { levels, kindLabel } from "./levels";
 import { summaries } from "./summaries";
-import { cheatsheet, tricks } from "./cheatsheet";
+import { cheatsheet, englishCheatsheet, englishTricks, tricks } from "./cheatsheet";
 import glossary from "./glossary.json";
+import { englishDefinitions, englishTerms } from "./english-glossary";
+import { englishLevels, englishLevelLabel } from "./english-levels";
+import { englishLessons } from "./english-lessons";
 
 export type DocType = "page" | "level" | "section" | "summary" | "term" | "cheat";
 
@@ -143,5 +146,38 @@ export function buildSearchDocs(): SearchDoc[] {
     });
   }
 
+  return docs;
+}
+
+export function buildEnglishSearchDocs(): SearchDoc[] {
+  const docs: SearchDoc[] = [
+    { id: "page:home", type: "page", title: "Chapter map", where: "Page", href: "/", text: "All chapters, zones, progress, and badges" },
+    { id: "page:cheatsheet", type: "page", title: "Cheat Sheet", where: "Page", href: "/cheatsheet", text: "SQL examples and shortcuts" },
+    { id: "page:revision", type: "page", title: "Revision", where: "Page", href: "/revision", text: "Chapter summaries and review questions" },
+    { id: "page:glossary", type: "page", title: "Glossary", where: "Page", href: "/glossary", text: "SQL and database definitions" },
+    { id: "page:templates", type: "page", title: "SQL Query Templates", where: "Page", href: "/templates", text: "Question scanner, query templates, and a worksheet" },
+  ];
+  for (const level of levels) {
+    const { slug, kind } = level;
+    const { title, topics } = englishLevels[slug];
+    const label = englishLevelLabel(level);
+    const where = kind === "level" ? `Level ${label}` : label;
+    const href = `/level/${slug}`;
+    docs.push({ id: `level:${slug}`, type: "level", title, where, href, text: topics });
+    englishLessons[slug].sections.forEach((section, index) => {
+      docs.push({ id: `section:${slug}:${index}`, type: "section", title: section.heading, where: `${where} · ${title}`, href: `${href}#en-section-${index + 1}`, text: section.text });
+    });
+  }
+  for (const term of glossary) {
+    docs.push({ id: `term:${term.id}`, type: "term", title: englishTerms[term.id] ?? term.term, where: "Glossary", href: `/glossary#${term.id}`, text: englishDefinitions[term.id] });
+  }
+  for (const category of englishCheatsheet) {
+    for (const item of category.items) {
+      docs.push({ id: `cheat:${item.id}`, type: "cheat", title: item.title, where: `Cheat Sheet · ${category.label}`, href: `/cheatsheet#cs-${item.id}`, text: `${item.code.replace(/\s+/g, " ")} ${item.note ?? ""}`.slice(0, 300) });
+    }
+  }
+  for (const tip of englishTricks) {
+    docs.push({ id: `trick:${tip.title}`, type: "cheat", title: tip.title, where: "Cheat Sheet · Tips", href: "/cheatsheet#tricks", text: plain(`${tip.text} ${tip.code ?? ""}`) });
+  }
   return docs;
 }

@@ -4,13 +4,16 @@ import { MotionConfig } from "motion/react";
 import { Toaster } from "sonner";
 import { Tooltip } from "radix-ui";
 import { SearchProvider } from "./SearchDialog";
+import { ReadingLanguageProvider } from "./ReadingLanguage";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     // ইউজার সিস্টেমে "Reduce motion" চালু রাখলে Motion-এর অ্যানিমেশন বন্ধ থাকবে
     <MotionConfig reducedMotion="user">
       <Tooltip.Provider delayDuration={200}>
-        <SearchProvider>{children}</SearchProvider>
+        <ReadingLanguageProvider>
+          <SearchProvider>{children}</SearchProvider>
+        </ReadingLanguageProvider>
       </Tooltip.Provider>
       <Toaster
         position="bottom-center"

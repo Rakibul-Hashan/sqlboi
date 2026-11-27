@@ -1,8 +1,8 @@
 // হাতে আঁকা ধাঁচের ছোট SVG। সব মৌলিক আঁকা, কোনো লাইব্রেরি লাগে না।
 
-export function BugDoodle({ className = "" }: { className?: string }) {
+export function BugDoodle({ className = "", decorative = false }: { className?: string; decorative?: boolean }) {
   return (
-    <svg viewBox="0 0 100 100" className={className} role="img" aria-label="বাগ মনস্টার">
+    <svg viewBox="0 0 100 100" className={className} role={decorative ? undefined : "img"} aria-label={decorative ? undefined : "বাগ মনস্টার"} aria-hidden={decorative || undefined}>
       <path d="M20 72 Q8 34 50 20 Q92 34 80 72 Q66 88 50 84 Q34 88 20 72z" fill="#FF6FB5" stroke="#111" strokeWidth="4" strokeLinejoin="round" />
       <circle cx="38" cy="48" r="8" fill="#fff" stroke="#111" strokeWidth="3" />
       <circle cx="62" cy="48" r="8" fill="#fff" stroke="#111" strokeWidth="3" />

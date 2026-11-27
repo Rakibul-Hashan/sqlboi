@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Hint } from "./ui/hint";
+import { useEnglish } from "./ReadingLanguage";
 
 /** লেখার আকার: ৪টা ধাপ, পছন্দ localStorage-এ থাকে। layout.tsx-এর ছোট স্ক্রিপ্ট পাতা আঁকার আগেই এটা বসায়, তাই ঝাঁকুনি নেই। */
 export const TEXT_SIZES = ["sm", "md", "lg", "xl"] as const;
@@ -29,6 +30,7 @@ function apply(size: Size) {
 }
 
 export function TextSizeControl({ className = "" }: { className?: string }) {
+  const english = useEnglish();
   const [size, setSize] = useState<Size>("md");
   useEffect(() => setSize(read()), []);
   const i = TEXT_SIZES.indexOf(size);
@@ -42,14 +44,14 @@ export function TextSizeControl({ className = "" }: { className?: string }) {
   const btn =
     "grid h-full min-w-10 place-items-center px-2 font-h3 hover:bg-yellow-soft disabled:cursor-not-allowed disabled:opacity-35";
   return (
-    <Hint label="লেখার আকার">
-      <div role="group" aria-label="লেখার আকার" className={`brut-sm flex h-11 items-stretch overflow-hidden bg-card ${className}`}>
-        <button type="button" className={`${btn} text-sm`} onClick={() => step(-1)} disabled={i === 0} aria-label="লেখা ছোট করো">
-          অ−
+    <Hint label={english ? "Text size" : "লেখার আকার"}>
+      <div role="group" aria-label={english ? "Text size" : "লেখার আকার"} className={`brut-sm flex h-11 items-stretch overflow-hidden bg-card ${className}`}>
+        <button type="button" className={`${btn} text-sm`} onClick={() => step(-1)} disabled={i === 0} aria-label={english ? "Decrease text size" : "লেখা ছোট করো"}>
+          {english ? "A−" : "অ−"}
         </button>
         <span className="w-0.5 bg-ink" aria-hidden />
-        <button type="button" className={`${btn} text-lg`} onClick={() => step(1)} disabled={i === TEXT_SIZES.length - 1} aria-label="লেখা বড় করো">
-          অ+
+        <button type="button" className={`${btn} text-lg`} onClick={() => step(1)} disabled={i === TEXT_SIZES.length - 1} aria-label={english ? "Increase text size" : "লেখা বড় করো"}>
+          {english ? "A+" : "অ+"}
         </button>
       </div>
     </Hint>

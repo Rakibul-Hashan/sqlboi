@@ -27,12 +27,12 @@ export function CodeBlock({ children }: { children?: React.ReactNode }) {
   const isOutput = lang === "text";
 
   return (
-    <div className={`brut-sm overflow-hidden ${isOutput ? "border-dashed bg-paper" : "bg-card"}`}>
+    <div className={`brut-sm min-w-0 max-w-full overflow-hidden ${isOutput ? "border-dashed bg-paper" : "bg-card"}`}>
       <div className={`flex items-center justify-between border-b-[2.5px] border-ink px-3 py-1.5 ${meta.bg}`}>
         <span className="font-h3 text-sm">{meta.label}</span>
         {!isOutput && <CopyButton text={code} />}
       </div>
-      <pre className="overflow-x-auto px-4 py-3 font-code text-[0.92rem] leading-relaxed md:text-[0.98rem] xl:text-[1.05rem]">
+      <pre tabIndex={0} className="overflow-x-auto overscroll-x-contain px-3 py-3 font-code text-[0.92rem] leading-relaxed md:px-4 md:text-[0.98rem] xl:text-[1.05rem]">
         <code>
           {lang === "sql"
             ? tokenizeSQL(code).map((t, i) =>

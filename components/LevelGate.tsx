@@ -4,16 +4,24 @@ import Link from "next/link";
 import { Lock } from "lucide-react";
 import { getNeighbours } from "@/lib/levels";
 import { useStatus } from "./StatusDot";
+import { useEnglish } from "./ReadingLanguage";
+import { englishLevels } from "@/lib/english-levels";
 
 /** লক করা লেভেলে নোটিশ দেখায়; পড়া বন্ধ করে না, শেখা কখনো আটকানো উচিত না */
 export function LevelGate({ slug }: { slug: string }) {
   const status = useStatus(slug);
+  const english = useEnglish();
   if (status !== "locked") return null;
   const { prev } = getNeighbours(slug);
   return (
-    <div className="brut-sm flex gap-3 bg-orange-soft p-4 text-base">
+    <div lang={english ? "en" : "bn"} className="brut-sm flex gap-3 bg-orange-soft p-4 text-base">
       <Lock className="mt-1 size-5 shrink-0" strokeWidth={2.4} aria-hidden />
-      <p>
+      {english ? (
+        <p>
+          You can read this lesson now. To unlock its progress, pass the checkpoint in{" "}
+          {prev && <Link href={`/level/${prev.slug}`} className="underline decoration-blue decoration-[3px] underline-offset-4">{englishLevels[prev.slug].title}</Link>}.
+        </p>
+      ) : <p>
         <span className="font-h3">এই লেভেলটা এখনো লক।</span> আগের লেভেলের চেকপয়েন্ট পাশ করলে খুলবে। পড়তে বাধা নেই, তবে এই লেভেল আগেরটার ওপর
         দাঁড়িয়ে আছে, তাই আগে{" "}
         {prev && (
@@ -22,7 +30,7 @@ export function LevelGate({ slug }: { slug: string }) {
           </Link>
         )}{" "}
         শেষ করে আসা ভালো।
-      </p>
+      </p>}
     </div>
   );
 }

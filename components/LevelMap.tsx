@@ -7,21 +7,24 @@ import { motion } from "motion/react";
 import { kindLabel, levels, toBn, totalXP, zoneBg, zones, type Level } from "@/lib/levels";
 import { computeXP, earnedBadges, useProgress } from "@/lib/progress";
 import { useStatus } from "./StatusDot";
+import { useEnglish } from "./ReadingLanguage";
+import { englishLevelLabel, englishLevels, englishZones } from "@/lib/english-levels";
 
 function TodoItem({ level, index }: { level: Level; index: number }) {
   const status = useStatus(level.slug);
+  const english = useEnglish();
   const special = level.kind !== "level";
   return (
     <li>
       <Link
         href={`/level/${level.slug}`}
-        className="group flex items-center gap-3 border-b-2 border-dashed border-grid py-3 pr-2 transition-colors hover:bg-yellow-soft"
+        className="group flex items-center gap-2 border-b-2 border-dashed border-grid py-3 pr-1 transition-colors hover:bg-yellow-soft sm:gap-3 sm:pr-2"
       >
         <span
           className={`grid size-9 shrink-0 place-items-center rounded-lg border-[2.5px] border-ink ${
             status === "done" ? "bg-green" : status === "open" ? "bg-yellow" : "bg-[#eeeeee]"
           }`}
-          aria-label={status === "done" ? "শেষ" : status === "open" ? "খোলা" : "লক"}
+          aria-label={english ? { done: "Complete", open: "Open", locked: "Locked" }[status] : status === "done" ? "শেষ" : status === "open" ? "খোলা" : "লক"}
         >
           {status === "done" && (
             <svg viewBox="0 0 24 24" className="size-6" aria-hidden>
@@ -42,20 +45,20 @@ function TodoItem({ level, index }: { level: Level; index: number }) {
           {status === "locked" && <Lock className="size-4 text-muted" strokeWidth={2.6} aria-hidden />}
           {status === "open" && <Pencil className="size-4" strokeWidth={2.6} aria-hidden />}
         </span>
-        <span className={`w-12 shrink-0 ${special ? "font-h3 text-xs leading-tight" : "font-h3 text-xl"}`}>{level.label}</span>
-        <span className="min-w-0 flex-1">
+        <span className={`w-9 shrink-0 sm:w-12 ${special ? "font-h3 text-xs leading-tight" : "font-h3 text-base sm:text-xl"}`}>{english ? englishLevelLabel(level) : level.label}</span>
+        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
           <span
             className={`block font-h3 text-lg leading-snug ${
               status === "done" ? "line-through decoration-pink decoration-[3px]" : status === "locked" ? "text-muted" : ""
             }`}
           >
-            {level.title}
+            {english ? englishLevels[level.slug].title : level.title}
           </span>
-          <span className="block text-sm leading-relaxed text-muted">{level.topics}</span>
+          <span className="block text-sm leading-relaxed text-muted">{english ? englishLevels[level.slug].topics : level.topics}</span>
         </span>
         <span className="hidden shrink-0 font-h3 text-sm sm:block">
-          {special ? kindLabel(level.kind) + " · " : ""}
-          {toBn(level.xp)} XP
+          {special && !english ? kindLabel(level.kind) + " · " : ""}
+          {english ? level.xp : toBn(level.xp)} XP
         </span>
       </Link>
     </li>
@@ -63,25 +66,26 @@ function TodoItem({ level, index }: { level: Level; index: number }) {
 }
 
 export function LevelMap() {
+  const english = useEnglish();
   return (
-    <div className="grid gap-10 lg:grid-cols-2">
+    <div lang={english ? "en" : "bn"} className="grid gap-10 lg:grid-cols-2">
       {zones.map((z, zi) => (
         <motion.section
           key={z.id}
           aria-labelledby={`${z.id}-h`}
-          initial={{ y: 28, rotate: 0 }}
-          whileInView={{ y: 0, rotate: zi % 2 ? 0.6 : -0.6 }}
+          initial={{ y: 28 }}
+          whileInView={{ y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.45, ease: "easeOut" }}
-          className="brut relative bg-card pb-3 pl-14 pr-4 pt-6 sm:pl-16"
+          className="brut relative min-w-0 bg-card pb-3 pl-5 pr-3 pt-6 sm:pl-16 sm:pr-4"
         >
-          <span aria-hidden className="absolute bottom-0 left-10 top-0 w-0.5 bg-pink sm:left-12" />
+          <span aria-hidden className="absolute bottom-0 left-2 top-0 w-0.5 bg-pink sm:left-12" />
           <span aria-hidden className="tape -top-3.5 right-8 rotate-3" />
-          <span className={`brut-sm inline-block -rotate-2 px-3 py-0.5 font-h3 text-sm ${zoneBg[z.id]}`}>জোন {z.number}</span>
+          <span className={`brut-sm inline-block -rotate-2 px-3 py-0.5 font-h3 text-sm ${zoneBg[z.id]}`}>{english ? englishZones[z.id].label : `জোন ${z.number}`}</span>
           <h3 id={`${z.id}-h`} className="mt-2 font-h2 text-3xl">
-            {z.name}
+            {english ? englishZones[z.id].name : z.name}
           </h3>
-          <p className="text-base text-muted">{z.tagline}</p>
+          <p className="text-base text-muted">{english ? englishZones[z.id].topics : z.tagline}</p>
           <ul className="mt-3">
             {levels
               .filter((l) => l.zone === z.id)
@@ -96,6 +100,7 @@ export function LevelMap() {
 }
 
 export function ProgressPanel() {
+  const english = useEnglish();
   const { progress, reset } = useProgress();
   const [confirming, setConfirming] = useState(false);
   const xp = computeXP(progress);
@@ -104,21 +109,22 @@ export function ProgressPanel() {
   const pct = Math.min(100, Math.round((done / levels.length) * 100));
 
   return (
-    <section className="brut bg-card p-5 sm:p-7" aria-label="তোমার অগ্রগতি">
+    <section className="brut bg-card p-5 sm:p-7" aria-label={english ? "Your progress" : "তোমার অগ্রগতি"}>
       <div className="flex flex-wrap items-end justify-between gap-5">
         <div>
-          <p className="font-h3 text-base text-muted">তোমার অগ্রগতি</p>
+          <p className="font-h3 text-base text-muted">{english ? "Your progress" : "তোমার অগ্রগতি"}</p>
           <p className="flex items-center gap-2 font-deco text-4xl">
             <Star className="size-8 fill-yellow" strokeWidth={2.2} aria-hidden />
-            {toBn(xp)} XP
+            {english ? xp : toBn(xp)} XP
           </p>
           <p className="text-base text-muted">
-            {toBn(done)}/{toBn(levels.length)} লেভেল শেষ · লেভেল থেকে সর্বোচ্চ {toBn(totalXP)} XP, কোয়েস্ট আর বস থেকে আরও
+            {english ? `${done}/${levels.length} chapters completed · Up to ${totalXP} XP from chapters, plus XP from quests and bosses` :
+              `${toBn(done)}/${toBn(levels.length)} লেভেল শেষ · লেভেল থেকে সর্বোচ্চ ${toBn(totalXP)} XP, কোয়েস্ট আর বস থেকে আরও`}
           </p>
         </div>
         {next && (
           <Link href={`/level/${next.slug}`} className="brut press bg-yellow px-5 py-3 font-h3 text-lg">
-            {done === 0 ? "শুরু করো →" : `চালিয়ে যাও: ${next.title} →`}
+            {english ? (done === 0 ? "Start reading →" : `Continue: ${englishLevels[next.slug].title} →`) : (done === 0 ? "শুরু করো →" : `চালিয়ে যাও: ${next.title} →`)}
           </Link>
         )}
       </div>
@@ -128,7 +134,7 @@ export function ProgressPanel() {
         aria-valuenow={pct}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label="সম্পূর্ণ হয়েছে"
+        aria-label={english ? "Progress completed" : "সম্পূর্ণ হয়েছে"}
       >
         <motion.div
           className="h-full border-r-[2.5px] border-ink bg-green"
@@ -142,18 +148,18 @@ export function ProgressPanel() {
         <div className="mt-4 text-right text-base">
           {confirming ? (
             <span>
-              সব অগ্রগতি মুছে যাবে।{" "}
+              {english ? "This will erase your progress." : "সব অগ্রগতি মুছে যাবে।"}{" "}
               <button type="button" className="font-h3 text-err underline decoration-2" onClick={() => { reset(); setConfirming(false); }}>
-                হ্যাঁ, মুছে দাও
+                {english ? "Reset progress" : "হ্যাঁ, মুছে দাও"}
               </button>{" "}
               <button type="button" className="font-h3 underline decoration-2" onClick={() => setConfirming(false)}>
-                না
+                {english ? "Cancel" : "না"}
               </button>
             </span>
           ) : (
             <button type="button" className="inline-flex items-center gap-1.5 text-muted underline decoration-2" onClick={() => setConfirming(true)}>
               <RotateCcw className="size-4" aria-hidden />
-              অগ্রগতি রিসেট করো
+              {english ? "Reset progress" : "অগ্রগতি রিসেট করো"}
             </button>
           )}
         </div>
@@ -163,8 +169,10 @@ export function ProgressPanel() {
 }
 
 const stickerTilt = [-6, 4, -3, 5];
+const englishBadges = ["SQL Basics", "Query Builder", "Database Designer", "Advanced SQL", "Assignment Solver", "Database Master"];
 
 export function BadgeStickers() {
+  const english = useEnglish();
   const { progress } = useProgress();
   const earned = earnedBadges(progress);
   return (
@@ -180,19 +188,19 @@ export function BadgeStickers() {
             transition={{ type: "spring", stiffness: 260, damping: 14, delay: i * 0.08 }}
             whileHover={has ? { rotate: 0, scale: 1.06 } : undefined}
             style={{ rotate: stickerTilt[i] }}
-            className={`flex aspect-square flex-col items-center justify-center gap-2 rounded-full border-[3px] border-ink p-3 text-center ${
+            className={`flex aspect-square min-h-28 min-w-0 flex-col items-center justify-center gap-1 rounded-full border-[3px] border-ink p-2 text-center [overflow-wrap:anywhere] sm:gap-2 sm:p-3 ${
               has ? `${zoneBg[z.id]} shadow-brut` : "border-dashed bg-card opacity-60"
             }`}
-            title={has ? "পেয়েছ" : `জোন ${z.number} শেষ করলে পাবে`}
+            title={english ? (has ? "Earned" : `Complete ${englishZones[z.id].label} to earn this badge`) : (has ? "পেয়েছ" : `জোন ${z.number} শেষ করলে পাবে`)}
           >
-            <span className="grid size-12 place-items-center rounded-full border-[3px] border-ink bg-card">
+            <span className="grid size-9 shrink-0 place-items-center rounded-full border-[3px] border-ink bg-card sm:size-12">
               {has ? <Award className="size-6" strokeWidth={2.4} aria-hidden /> : <Lock className="size-5" strokeWidth={2.4} aria-hidden />}
             </span>
-            <span className="font-h3 text-sm leading-tight sm:text-base">{z.badge.name}</span>
+            <span className="font-h3 text-sm leading-tight sm:text-base">{english ? englishBadges[i] : z.badge.name}</span>
             {has && (
               <span className="flex items-center gap-1 text-xs">
                 <Check className="size-3.5" strokeWidth={3} aria-hidden />
-                পেয়েছ
+                {english ? "Earned" : "পেয়েছ"}
               </span>
             )}
           </motion.div>

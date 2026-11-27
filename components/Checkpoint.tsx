@@ -8,6 +8,8 @@ import { toBn } from "@/lib/levels";
 import { useProgress } from "@/lib/progress";
 import { useLevel } from "./LevelContext";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
+import { useEnglish } from "./ReadingLanguage";
+import { englishLevels } from "@/lib/english-levels";
 
 export interface QuizQuestion {
   q: string;
@@ -29,6 +31,8 @@ async function celebrate() {
 }
 
 export function Checkpoint({ questions }: { questions: QuizQuestion[] }) {
+  const english = useEnglish();
+  const number = english ? String : toBn;
   const { slug, xp, next } = useLevel();
   const { progress, completeLevel } = useProgress();
   const [picked, setPicked] = useState<(number | null)[]>(() => questions.map(() => null));
@@ -59,17 +63,17 @@ export function Checkpoint({ questions }: { questions: QuizQuestion[] }) {
   }
 
   return (
-    <section className="brut mt-16 bg-card p-5 shadow-brut-lg sm:p-8" aria-labelledby={`${baseId}-h`}>
+    <section className="brut mt-16 min-w-0 bg-card p-3 shadow-brut-lg sm:p-6 lg:p-8" aria-labelledby={`${baseId}-h`}>
       <span className="brut-sm inline-flex -rotate-2 items-center gap-1.5 bg-green px-3 py-1 font-h3 text-sm">
         <Flag className="size-4" strokeWidth={2.4} aria-hidden />
-        চেকপয়েন্ট
+        {english ? "Checkpoint" : "চেকপয়েন্ট"}
       </span>
       <h2 id={`${baseId}-h`} className="mt-3 font-h2 text-2xl sm:text-3xl">
-        ছোট কুইজ: {toBn(need)}/{toBn(questions.length)} ঠিক হলে লেভেল পার
+        {english ? `Get ${need} of ${questions.length} right to pass` : `ছোট কুইজ: ${toBn(need)}/${toBn(questions.length)} ঠিক হলে লেভেল পার`}
       </h2>
       {prev && !submitted && (
         <p className="mt-2 text-base text-ok">
-          ✔ আগেই পাশ করেছ ({toBn(prev.score)}/{toBn(prev.total)})। চাইলে আবার খেলো।
+          {english ? `✔ Already passed (${prev.score}/${prev.total}). You can try again.` : `✔ আগেই পাশ করেছ (${toBn(prev.score)}/${toBn(prev.total)})। চাইলে আবার খেলো।`}
         </p>
       )}
 
@@ -79,9 +83,9 @@ export function Checkpoint({ questions }: { questions: QuizQuestion[] }) {
           const isRight = chosen === item.answer;
           return (
             <li key={qi}>
-              <fieldset disabled={submitted}>
+              <fieldset disabled={submitted} className="min-w-0">
                 <legend className="font-h3 text-lg">
-                  <span>{toBn(qi + 1)}.</span> {item.q}
+                  <span>{number(qi + 1)}.</span> {item.q}
                 </legend>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   {item.options.map((opt, oi) => {
@@ -97,24 +101,24 @@ export function Checkpoint({ questions }: { questions: QuizQuestion[] }) {
                     return (
                       <label
                         key={oi}
-                        className={`brut-sm flex cursor-pointer items-start gap-3 px-4 py-3 text-base transition-transform has-[:focus-visible]:outline has-[:focus-visible]:outline-[3px] has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-blue ${state}`}
+                        className={`brut-sm flex min-w-0 cursor-pointer items-start gap-2 px-2.5 py-3 text-base transition-transform has-[:focus-visible]:outline has-[:focus-visible]:outline-[3px] has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-blue sm:gap-3 sm:px-4 ${state}`}
                       >
                         <input
                           type="radio"
                           name={`${baseId}-q${qi}`}
-                          className="mt-1.5 size-4 accent-ink"
+                          className="mt-1.5 size-4 shrink-0 accent-ink"
                           checked={chosen === oi}
                           onChange={() => setPicked((p) => p.map((v, i) => (i === qi ? oi : v)))}
                         />
-                        <span>{opt}</span>
+                        <span className="min-w-0 [overflow-wrap:anywhere]">{opt}</span>
                       </label>
                     );
                   })}
                 </div>
                 {submitted && (
                   <p className="mt-2 text-base">
-                    <span className={`font-h3 ${isRight ? "text-ok" : "text-err"}`}>{isRight ? "ঠিক! " : "উঁহু। "}</span>
-                    {item.why}
+                    <span className={`font-h3 ${isRight ? "text-ok" : "text-err"}`}>{english ? (isRight ? "Correct. " : "Incorrect. ") : (isRight ? "ঠিক! " : "উঁহু। ")}</span>
+                    {item.why ?? (english && !isRight ? `Answer: ${item.options[item.answer]}` : null)}
                   </p>
                 )}
               </fieldset>
@@ -131,16 +135,16 @@ export function Checkpoint({ questions }: { questions: QuizQuestion[] }) {
             disabled={!allAnswered}
             className="brut press bg-green px-7 py-3 font-h3 text-lg disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:transform-none disabled:hover:shadow-brut"
           >
-            উত্তর জমা দাও
+            {english ? "Submit answers" : "উত্তর জমা দাও"}
           </button>
         ) : (
           <>
             <span className="font-h3 text-lg">
-              ফল: <span>{toBn(score)}/{toBn(questions.length)}</span>
+              {english ? "Score:" : "ফল:"} <span>{number(score)}/{number(questions.length)}</span>
             </span>
             <button type="button" onClick={retry} className="brut-sm press press-sm inline-flex items-center gap-2 bg-card px-4 py-2 font-h3">
               <RotateCcw className="size-4" strokeWidth={2.4} aria-hidden />
-              আবার খেলো
+              {english ? "Retake quiz" : "আবার খেলো"}
             </button>
           </>
         )}
@@ -157,13 +161,14 @@ export function Checkpoint({ questions }: { questions: QuizQuestion[] }) {
             }`}
             aria-hidden
           >
-            {passed ? "পাস!" : "আবার"}
+            {english ? (passed ? "Passed" : "Retry") : (passed ? "পাস!" : "আবার")}
           </motion.div>
           <DialogTitle className="mt-6 font-h1 text-3xl">
-            {passed ? "লেভেল পার!" : "প্রায় হয়ে গেছিল!"}
+            {english ? (passed ? "Checkpoint passed!" : "Keep practicing") : (passed ? "লেভেল পার!" : "প্রায় হয়ে গেছিল!")}
           </DialogTitle>
           <DialogDescription className="mt-2 font-body text-lg">
-            {passed
+            {english ? (passed ? `${score}/${questions.length} correct · ${xp} XP for completing this chapter.` :
+              `${score}/${questions.length} correct. You need ${need - score} more to pass. Review the answers and try again.`) : passed
               ? `${toBn(score)}/${toBn(questions.length)} ঠিক · +${toBn(xp)} XP পেলে।`
               : `${toBn(score)}/${toBn(questions.length)} ঠিক। আর ${toBn(need - score)}টা লাগবে। লাল-সবুজ ব্যাখ্যাগুলো পড়ে আবার চেষ্টা করো।`}
           </DialogDescription>
@@ -171,22 +176,22 @@ export function Checkpoint({ questions }: { questions: QuizQuestion[] }) {
             {passed ? (
               next ? (
                 <Link href={`/level/${next.slug}`} className="brut press inline-flex items-center justify-center gap-2 bg-yellow px-5 py-3 font-h3 text-lg">
-                  পরের লেভেল: {next.title}
+                  {english ? `Next chapter: ${englishLevels[next.slug].title}` : `পরের লেভেল: ${next.title}`}
                   <ArrowRight className="size-5" strokeWidth={2.6} aria-hidden />
                 </Link>
               ) : (
                 <Link href="/" className="brut press inline-flex items-center justify-center gap-2 bg-yellow px-5 py-3 font-h3 text-lg">
-                  ম্যাপে ফিরে যাও
+                  {english ? "Back to the chapter map" : "ম্যাপে ফিরে যাও"}
                 </Link>
               )
             ) : (
               <button type="button" onClick={retry} className="brut press inline-flex items-center justify-center gap-2 bg-yellow px-5 py-3 font-h3 text-lg">
                 <RotateCcw className="size-5" strokeWidth={2.6} aria-hidden />
-                আবার চেষ্টা করো
+                {english ? "Try again" : "আবার চেষ্টা করো"}
               </button>
             )}
             <DialogClose className="font-h3 text-base underline decoration-2 underline-offset-4">
-              {passed ? "এখানেই থাকি" : "আগে ব্যাখ্যাগুলো দেখি"}
+              {english ? (passed ? "Stay here" : "Review answers") : (passed ? "এখানেই থাকি" : "আগে ব্যাখ্যাগুলো দেখি")}
             </DialogClose>
           </div>
         </DialogContent>

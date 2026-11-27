@@ -19,7 +19,7 @@ const h3 = { fontFamily: "var(--font-h3)" } as const;
 function Figure({ children, caption, label }: { children: React.ReactNode; caption?: React.ReactNode; label: string }) {
   return (
     <figure className="brut-sm my-8 overflow-hidden bg-card" role="group" aria-label={label}>
-      <div className="overflow-x-auto bg-paper px-3 py-4 [background-image:radial-gradient(var(--color-grid)_1px,transparent_1px)] [background-size:18px_18px]">{children}</div>
+      <div tabIndex={0} className="max-w-full overflow-x-auto overscroll-x-contain bg-paper px-3 py-4 [background-image:radial-gradient(var(--color-grid)_1px,transparent_1px)] [background-size:18px_18px]">{children}</div>
       {caption && <figcaption className="border-t-[2.5px] border-ink bg-card px-4 py-2.5 text-[0.92em] leading-relaxed">{caption}</figcaption>}
     </figure>
   );

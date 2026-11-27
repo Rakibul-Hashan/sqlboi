@@ -30,12 +30,12 @@ export function SqlView({
   highlight?: boolean;
 }) {
   return (
-    <div className="brut-sm overflow-hidden bg-card">
+    <div className="brut-sm min-w-0 max-w-full overflow-hidden bg-card">
       <div className={`flex items-center justify-between border-b-[2.5px] border-ink px-3 py-1.5 ${bg}`}>
         <span className="font-h3 text-sm">{label}</span>
         {copy && <CopyButton text={code} />}
       </div>
-      <pre className="overflow-x-auto px-4 py-3 font-code text-[0.92rem] leading-relaxed md:text-[0.98rem] xl:text-[1.02rem]">
+      <pre tabIndex={0} className="overflow-x-auto overscroll-x-contain px-3 py-3 font-code text-[0.92rem] leading-relaxed md:px-4 md:text-[0.98rem] xl:text-[1.02rem]">
         <code>
           {highlight
             ? tokenizeSQL(code).map((t, i) =>
