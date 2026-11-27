@@ -120,23 +120,25 @@ export const summaries: Record<string, Summary> = {
   },
   "level-10": {
     points: [
-      "একই তথ্য বারবার না লিখতে ডেটা কয়েক টেবিলে ভাগ করি, তারপর `JOIN` দিয়ে জোড়া দিই।",
-      "`INNER JOIN` শুধু দুই পাশে মিল থাকা Row রাখে।",
-      "`ON`-এ Foreign Key মেলাও Parent-এর Primary Key-র সাথে।",
-      "টেবিলের Alias (`FROM marks m`) Query ছোট রাখে; একাধিক টেবিলে একই নামের Column হলে টেবিলের নাম দিতেই হবে।",
+      "একটা তথ্য এক জায়গায়: কাস্টমার, অর্ডার, পণ্য, কর্মী আলাদা টেবিলে, id দিয়ে একে অন্যকে চেনে।",
+      "আগে প্রশ্ন: বেশি Column (পাশাপাশি) লাগবে, নাকি বেশি Row (ওপরে-নিচে)? Column হলে JOIN, Row হলে UNION।",
+      "সম্পর্ক না চাইলে JOIN লাগে না: \"সব কাস্টমার আর সব অর্ডার\" = দুটো আলাদা SELECT।",
+      "`INNER JOIN` শুধু দুই পাশে মিল থাকা Row রাখে; অর্ডারহীন কাস্টমার আর কাস্টমারহীন অর্ডার বাদ।",
+      "`SELECT *` না, দরকারি Column; টেবিলের Alias (`customers c`) Query ছোট আর পরিষ্কার রাখে।",
     ],
-    syntax: "SELECT s.name, sub.name AS subject, m.score\nFROM marks m\nJOIN students s   ON s.id = m.student_id\nJOIN subjects sub ON sub.id = m.subject_id;",
-    traps: ["`ON` ভুলে গেলে Cartesian Product (১০ × ২৬ = ২৬০ লাইন)।", "ভুল Column দিয়ে `ON` দিলে error ছাড়াই ভুল উত্তর।", "JOIN-এর পর গুনতে `COUNT(DISTINCT s.id)`।"],
+    syntax: "SELECT c.name, o.order_id, o.order_date, o.amount\nFROM customers c\nJOIN orders o ON o.customer_id = c.customer_id;",
+    traps: ["`ON` ভুলে গেলে Cartesian Product (৫ × ৭ = ৩৫ লাইন)।", "ভুল Column দিয়ে `ON` দিলে error ছাড়াই ভুল উত্তর।", "দুই টেবিলে একই নামের Column হলে alias বাধ্যতামূলক (`ambiguous`)।"],
   },
   "level-11": {
     points: [
-      "`LEFT JOIN` বাঁয়ের সবাইকে রাখে; মিল না থাকলে ডানের ঘর `NULL`।",
-      "Anti Join: `LEFT JOIN ... WHERE ডান.key IS NULL` = \"যাদের কিছু নেই\"।",
-      "MySQL-এ `FULL OUTER JOIN` নেই: `LEFT JOIN ... UNION ... RIGHT JOIN`।",
-      "Self Join: একই টেবিল দুই Alias-এ (শিক্ষক আর তাঁর প্রধান)।",
+      "`LEFT JOIN` বাঁয়ের সবাইকে রাখে, মিল না থাকলে ডানে `NULL`; বাঁয়ে বসে \"রিপোর্টের প্রতি Row যা\" সেই টেবিল।",
+      "`RIGHT JOIN` উল্টো; টেবিল উল্টে `LEFT JOIN` লেখাই প্রচলিত।",
+      "`FULL JOIN` দুই পাশের সবাই; MySQL-এ নেই: `LEFT JOIN ... UNION ALL ...` উল্টো `LEFT JOIN ... IS NULL`।",
+      "Anti Join (যা মেলে না): `LEFT JOIN ... WHERE ডান.key IS NULL`; দুই পাশের জন্য দুটোকে `UNION ALL`।",
+      "`CROSS JOIN` সব জোড়া (৫ × ৪ = ২০); অনেক টেবিলে মূল টেবিল দিয়ে শুরু, প্রতিটা নতুন টেবিলে একটা `JOIN`।",
     ],
-    syntax: "SELECT s.name\nFROM students s\nLEFT JOIN marks m ON m.student_id = s.id\nWHERE m.student_id IS NULL;",
-    traps: ["ডান টেবিলের শর্ত `WHERE`-এ দিলে `LEFT JOIN` চুপচাপ `INNER JOIN` হয়ে যায়; শর্ত `ON`-এ দাও।", "`LEFT JOIN`-এর পর `COUNT(*)` মিলহীন Row-ও গোনে; ডানের Column গোনো।"],
+    syntax: "SELECT c.name\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.customer_id\nWHERE o.order_id IS NULL;",
+    traps: ["ডান টেবিলের শর্ত `WHERE`-এ দিলে `LEFT JOIN` চুপচাপ `INNER JOIN` হয়ে যায়; শর্ত `ON`-এ দাও।", "`LEFT JOIN`-এর পর `COUNT(*)` মিলহীন Row-ও গোনে; ডানের Column গোনো।", "শিকলে `LEFT JOIN`-এর পরের জোড়া সাধারণ `JOIN` হলে বাঁচানো Row আবার হারায়।"],
   },
   "level-12": {
     points: [

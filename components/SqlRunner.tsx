@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Database, Download, LoaderCircle, Pencil, Play, RotateCcw, Table2, X } from "lucide-react";
-import { formatCell, freshDatabase, runOn, type DbName, type RunOutput, type SqlJsDatabase } from "@/lib/sql-engine";
+import { DB_PATH, formatCell, freshDatabase, runOn, type DbName, type RunOutput, type SqlJsDatabase } from "@/lib/sql-engine";
 import { toBn } from "@/lib/levels";
 
 export const DB_INFO: Record<DbName, { label: string; tables: string[] }> = {
+  "join-shop": { label: "জোড়ার দোকান", tables: ["customers", "orders", "products", "employees", "sizes"] },
   "q1-course": { label: "কোর্স রেজিস্ট্রেশন", tables: ["student", "course", "registered"] },
   "q2-staff": { label: "স্টাফ আর ব্রাঞ্চ", tables: ["Staff", "Branch"] },
   "q3-shop": { label: "অনলাইন শপ", tables: ["customer", "product", "orders"] },
@@ -287,7 +288,7 @@ export function Playground({ db, initial }: { db: DbName; initial?: string }) {
           প্লেগ্রাউন্ড: {info.label}
         </p>
         <a
-          href={`/sql/assignment/${db}.sql`}
+          href={DB_PATH[db]}
           download
           className="brut-sm press press-sm inline-flex min-h-9 items-center gap-1.5 bg-card px-3 py-1 font-h3 text-sm !no-underline"
         >

@@ -83,8 +83,8 @@ export const levels: Level[] = [
   { slug: "level-7", label: "৭", kind: "level", zone: "zone-2", title: "হিসাব-নিকাশ", topics: "COUNT, SUM, AVG, MIN, MAX", xp: 120 },
   { slug: "level-8", label: "৮", kind: "level", zone: "zone-2", title: "দল বাঁধা", topics: "GROUP BY, HAVING, Query-র Execution Order", xp: 120 },
   { slug: "level-9", label: "৯", kind: "level", zone: "zone-2", title: "নিয়মের পাহারা", topics: "PRIMARY KEY, FOREIGN KEY, UNIQUE, NOT NULL, DEFAULT, CHECK", xp: 120 },
-  { slug: "level-10", label: "১০", kind: "level", zone: "zone-2", title: "টেবিল জোড়া (১)", topics: "Relationship-এর ধারণা, INNER JOIN", xp: 120 },
-  { slug: "level-11", label: "১১", kind: "level", zone: "zone-2", title: "টেবিল জোড়া (২)", topics: "LEFT, RIGHT, SELF JOIN, একাধিক Table", xp: 120 },
+  { slug: "level-10", label: "১০", kind: "level", zone: "zone-2", title: "টেবিল জোড়া (১)", topics: "কেন অনেক টেবিল, বেশি Column নাকি বেশি Row (JOIN বনাম UNION), INNER JOIN, Alias", xp: 120 },
+  { slug: "level-11", label: "১১", kind: "level", zone: "zone-2", title: "টেবিল জোড়া (২)", topics: "LEFT, RIGHT, FULL JOIN, Anti Join, CROSS JOIN, অনেক টেবিল, Self Join", xp: 120 },
   { slug: "level-12", label: "১২", kind: "level", zone: "zone-2", title: "কুয়েরির ভেতরে কুয়েরি", topics: "Subquery, EXISTS, UNION", xp: 120 },
   { slug: "boss-2", label: "মিনি বস", kind: "mini-boss", zone: "zone-2", title: "লাইব্রেরি ম্যানেজমেন্ট", topics: "জোন ২-এর Query-যুদ্ধ", xp: 250 },
   // জোন ৩

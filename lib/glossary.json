@@ -146,8 +146,11 @@
   {
     "id": "cartesian",
     "term": "Cartesian Product",
-    "def": "প্রতিটা Row-এর সাথে অন্য টেবিলের প্রতিটা Row-এর জোড়া (CROSS JOIN)। ON ভুলে গেলে এটাই হয়।",
-    "level": "level-10"
+    "def": "প্রতিটা Row-এর সাথে অন্য টেবিলের প্রতিটা Row-এর জোড়া (CROSS JOIN, যেমন ৫টা পণ্য × ৪টা সাইজ = ২০)। ON ভুলে গেলে অনিচ্ছায় এটাই হয়।",
+    "level": "level-10",
+    "aliases": [
+      "CROSS JOIN"
+    ]
   },
   {
     "id": "left-join",
@@ -158,7 +161,7 @@
   {
     "id": "anti-join",
     "term": "Anti Join",
-    "def": "\"যাদের কিছু নেই\" খোঁজার কৌশল: LEFT JOIN ... WHERE ডান.key IS NULL, বা NOT EXISTS।",
+    "def": "\"যা মেলে না\" খোঁজার কৌশল: LEFT JOIN ... WHERE ডান.key IS NULL, বা NOT EXISTS। দুই পাশের জন্য দুটোকে UNION ALL (Full Anti Join)।",
     "level": "level-11"
   },
   {
@@ -167,7 +170,7 @@
     "aliases": [
       "SELF JOIN"
     ],
-    "def": "একটা টেবিলকে দুটো আলাদা Alias দিয়ে নিজের সাথেই জোড়া, যেমন শিক্ষক আর তাঁর প্রধান।",
+    "def": "একটা টেবিলকে দুটো আলাদা Alias দিয়ে নিজের সাথেই জোড়া, যেমন কর্মী আর তাঁর ম্যানেজার।",
     "level": "level-11"
   },
   {
@@ -802,5 +805,23 @@
     ],
     "def": "∪, ∩ আর − (বিয়োগ) চালাতে দুই পাশের Column-এর সংখ্যা আর ধরন এক হতে হয়। π cust_id, cname (customer) − π cust_id (orders) তাই অবৈধ।",
     "level": "level-5-4"
+  },
+  {
+    "id": "full-join",
+    "term": "FULL JOIN",
+    "aliases": [
+      "FULL OUTER JOIN"
+    ],
+    "def": "দুই টেবিলেরই সব Row রাখে, মিল না থাকলে উল্টো পাশে NULL। MySQL-এ নেই: LEFT JOIN … UNION ALL … উল্টো LEFT JOIN … IS NULL।",
+    "level": "level-11"
+  },
+  {
+    "id": "set-operator",
+    "term": "Set Operator",
+    "aliases": [
+      "Set Operators"
+    ],
+    "def": "দুই Query-র ফলাফল একটার নিচে আরেকটা বসিয়ে Row জোড়ে (UNION, UNION ALL)। JOIN জোড়ে Column, Set Operator জোড়ে Row।",
+    "level": "level-10"
   }
 ]

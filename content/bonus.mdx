@@ -51,7 +51,7 @@ Execution Order: `FROM` → `WHERE` → `GROUP BY` → `HAVING` → `SELECT` →
 </Solution>
 
 <Solution title="৬. বিভিন্ন JOIN ব্যাখ্যা করো। MySQL-এ FULL OUTER JOIN কীভাবে করবে? (লেভেল ১০–১১)">
-`INNER` = শুধু মিল থাকা; `LEFT` = বাঁয়ের সব + মিল; `RIGHT` = ডানের সব + মিল; `FULL OUTER` = দুই পাশের সব; `CROSS` = Cartesian Product; `SELF` = টেবিলকে নিজের সাথে। MySQL-এ `FULL OUTER JOIN` নেই: `LEFT JOIN ... UNION ... RIGHT JOIN`।
+`INNER` = শুধু মিল থাকা; `LEFT` = বাঁয়ের সব + মিল; `RIGHT` = ডানের সব + মিল; `FULL OUTER` = দুই পাশের সব; `CROSS` = Cartesian Product; `SELF` = টেবিলকে নিজের সাথে। MySQL-এ `FULL OUTER JOIN` নেই: `LEFT JOIN ... UNION ALL ...` উল্টো দিকের `LEFT JOIN ... WHERE ... IS NULL` (সহজ রূপ `LEFT JOIN ... UNION ... RIGHT JOIN`-ও চলে, তবে `UNION` সত্যিকারের ডুপ্লিকেট Row-ও মুছে দেয়)। Anti Join = `LEFT JOIN ... WHERE ডান.key IS NULL`।
 </Solution>
 
 <Solution title="৭. Normalization কী, কেন? 1NF থেকে BCNF সংক্ষেপে। (লেভেল ১৫)">

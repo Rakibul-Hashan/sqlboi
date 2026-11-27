@@ -12,7 +12,16 @@
  * (DROP/CREATE DATABASE, USE) বাদ দিই; বাকিটা SQLite হুবহু বোঝে।
  */
 
-export type DbName = "q1-course" | "q2-staff" | "q3-shop" | "q4-emp";
+export type DbName = "join-shop" | "q1-course" | "q2-staff" | "q3-shop" | "q4-emp";
+
+/** Database ফাইল কোথায়: জোন ৫-এরগুলো assignment/-এ, বাকিগুলো sql/-এ */
+export const DB_PATH: Record<DbName, string> = {
+  "join-shop": "/sql/join-shop.sql",
+  "q1-course": "/sql/assignment/q1-course.sql",
+  "q2-staff": "/sql/assignment/q2-staff.sql",
+  "q3-shop": "/sql/assignment/q3-shop.sql",
+  "q4-emp": "/sql/assignment/q4-emp.sql",
+};
 
 export interface ResultSet {
   columns: string[];
@@ -94,7 +103,7 @@ export function toSqliteSeed(mysql: string): string {
 function loadSeed(db: DbName): Promise<string> {
   let p = seedCache.get(db);
   if (!p) {
-    p = fetch(`/sql/assignment/${db}.sql`)
+    p = fetch(DB_PATH[db])
       .then((r) => {
         if (!r.ok) throw new Error(`ডেটাবেস ফাইল পাওয়া যায়নি (${r.status})`);
         return r.text();

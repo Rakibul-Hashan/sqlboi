@@ -81,6 +81,8 @@ lib/levels.ts           পুরো সূচি: লেভেল, জোন, X
 lib/progress.ts         localStorage-এ অগ্রগতি
 lib/highlight.ts        নির্ভরতাহীন SQL হাইলাইটার (বিল্ডের সময় চলে)
 public/sql/             পাঠকের জন্য সেটআপ স্ক্রিপ্ট (school, shop, library, coaching, arena)
+public/sql/join-shop.sql লেভেল ১০–১১-এর অনলাইন দোকান (customers, orders, products, employees, sizes); পাতায় ব্রাউজারেই চলে
+components/JoinDiagram  লেভেল ১০–১১-এর নিজের আঁকা SVG ছবি (টেবিলের মানচিত্র, Column বনাম Row, Venn, Row মেলানো, CROSS JOIN)
 public/sql/assignment/  জোন ৫-এর ৪টা Database (q1-course, q2-staff, q3-shop, q4-emp); নামানো যায়, ব্রাউজারও এগুলোই লোড করে
 public/sqljs/           sql.js 1.17.0 (SQLite 3.54, WebAssembly, MIT), self-hosted
 lib/sql-engine.ts       ব্রাউজারে SQL চালানো: ইঞ্জিন লোড, MySQL ফাইল থেকে seed, YEAR/MONTH/DAY, CREATE OR REPLACE VIEW
@@ -124,7 +126,7 @@ SELECT * FROM customer;
 - **একটাই ডেটার উৎস।** `public/sql/assignment/<db>.sql` হলো সাধারণ MySQL ফাইল; ব্রাউজার শুধু `DROP/CREATE DATABASE` আর `USE` লাইন বাদ দিয়ে বাকিটা চালায়।
 - `<Run>` প্রতিবার নতুন, ভরা Database-এ চলে (উত্তর সবসময় বইয়ের সাথে মেলে); `<Playground>`-এর Database "রিসেট" পর্যন্ত থাকে, তাই View বানিয়ে পরে `SELECT` করা যায়।
 - MySQL-এর যা SQLite বোঝে না, তার মধ্যে এই অধ্যায়ে যা লাগে: `CREATE OR REPLACE VIEW` (বদলে `DROP VIEW IF EXISTS` + `CREATE VIEW`), আর `YEAR()`, `MONTH()`, `DAY()` (নিজস্ব Function হিসেবে যোগ করা)। নতুন MySQL-নির্দিষ্ট কিছু ব্যবহার করলে `lib/sql-engine.ts`-এ যোগ করো, নয়তো সমতুল্য স্ট্যান্ডার্ড লেখা দাও।
-- **নতুন Database যোগ করতে:** `public/sql/assignment/`-এ ফাইল, `lib/sql-engine.ts`-এর `DbName`-এ নাম, আর `components/SqlRunner.tsx`-এর `DB_INFO`-তে লেবেল ও টেবিলের তালিকা।
+- **নতুন Database যোগ করতে:** `public/sql/`-এ ফাইল, `lib/sql-engine.ts`-এর `DbName` আর `DB_PATH`-এ নাম ও পথ, আর `components/SqlRunner.tsx`-এর `DB_INFO`-তে লেবেল ও টেবিলের তালিকা।
 - sql.js হালনাগাদ করতে: `npm i -D sql.js@latest`, তারপর `node_modules/sql.js/dist/sql-wasm.{js,wasm}` দুটো `public/sqljs/`-এ কপি।
 
 ## গুণমান যাচাই

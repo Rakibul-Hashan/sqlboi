@@ -9,6 +9,7 @@ import { ERDiagram } from "@/components/ERDiagram";
 import { LevelRef, Term } from "@/components/CrossRef";
 import { Summary } from "@/components/Summary";
 import { Run } from "@/components/Run";
+import { ColsVsRows, CrossGrid, JoinMatch, JoinSchema, JoinVenn, JoinVennGrid } from "@/components/JoinDiagram";
 import { Playground } from "@/components/SqlRunner";
 
 const components: MDXComponents = {
@@ -66,6 +67,12 @@ const components: MDXComponents = {
   LevelRef,
   Run,
   Playground,
+  JoinSchema,
+  ColsVsRows,
+  JoinVenn,
+  JoinVennGrid,
+  JoinMatch,
+  CrossGrid,
 };
 
 export function useMDXComponents(): MDXComponents {
